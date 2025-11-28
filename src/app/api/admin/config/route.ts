@@ -28,6 +28,14 @@ export async function GET(request: NextRequest) {
 
   try {
     const config = await getConfig();
+    
+    // 如果启用了审核功能，过滤掉未通过审核的用户
+    if (config.UserConfig.RequireApproval) {
+      config.UserConfig.Users = config.UserConfig.Users.filter(
+        (u) => u.approved !== false
+      );
+    }
+    
     const result: AdminConfigResult = {
       Role: 'owner',
       Config: config,
