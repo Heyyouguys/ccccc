@@ -194,7 +194,9 @@ function shouldSkipAuth(pathname: string): boolean {
     '/manifest.json',
     '/icons/',
     '/logo.png',
+    '/screenshot.png',
     '/api/telegram/', // Telegram API 端点
+    '/api/proxy/', // 代理API端点 - 修复连接超时问题
   ];
 
   return skipPaths.some((path) => pathname.startsWith(path));
