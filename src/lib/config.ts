@@ -348,11 +348,16 @@ export async function configSelfCheck(adminConfig: AdminConfig): Promise<AdminCo
         // 保留现有配置
         return existingUserConfig;
       } else {
-        // 新用户，创建默认配置
+        // 新用户在配置中不存在，这种情况不应该发生
+        // 因为注册时应该已经将用户添加到配置中
+        // 但为了防御性编程，我们创建一个默认配置
+        // 如果启用了审核功能，新发现的用户应该默认为未审核状态
+        const requireApproval = adminConfig.UserConfig.RequireApproval !== false;
         return {
           username,
           role: username === ownerUser ? ('owner' as const) : ('user' as const),
           banned: false,
+          approved: username === ownerUser ? true : !requireApproval, // 站长默认通过，其他用户根据审核配置
         };
       }
     });

@@ -132,15 +132,16 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: '该用户名已被注册' }, { status: 400 });
       }
 
-      // 注册用户
-      await db.registerUser(username, password);
-
-      // 重新获取配置来添加用户
+      // 先获取配置来检查是否需要审核（在注册用户之前）
       const config = await getConfig();
       
       // 根据配置决定是否需要审核
       const requireApproval = config.UserConfig.RequireApproval !== false; // 默认需要审核
       
+      // 注册用户到数据库
+      await db.registerUser(username, password);
+
+      // 创建新用户配置
       const newUser = {
         username: username,
         role: 'user' as const,
@@ -149,9 +150,10 @@ export async function POST(req: NextRequest) {
         ...(requireApproval ? {} : { approvedAt: Date.now() }) // 如果不需要审核，设置审核通过时间
       };
 
+      // 将新用户添加到配置中
       config.UserConfig.Users.push(newUser);
 
-      // 保存更新后的配置
+      // 保存更新后的配置（直接保存，不要再调用 getConfig）
       await db.saveAdminConfig(config);
 
       // 清除缓存，确保下次获取配置时是最新的
