@@ -29,12 +29,8 @@ export async function GET(request: NextRequest) {
   try {
     const config = await getConfig();
     
-    // 如果启用了审核功能，过滤掉未通过审核的用户
-    if (config.UserConfig.RequireApproval) {
-      config.UserConfig.Users = config.UserConfig.Users.filter(
-        (u) => u.approved !== false
-      );
-    }
+    // 不再过滤未审核用户，让管理员可以看到所有用户（包括待审核的）
+    // 前端可以根据 approved 字段显示不同的状态
     
     const result: AdminConfigResult = {
       Role: 'owner',
