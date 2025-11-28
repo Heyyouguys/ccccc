@@ -908,17 +908,17 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
               </div>
             </div>
             {/* 需要审核设置 */}
-            <div className='mt-4 p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800'>
-              <div className='flex items-center justify-between'>
-                <div>
-                  <div className='font-medium text-gray-900 dark:text-gray-100'>
+            <div className='mt-6 p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800'>
+              <div className='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4'>
+                <div className='flex-1'>
+                  <div className='font-medium text-gray-900 dark:text-gray-100 mb-1'>
                     需要审核
                   </div>
                   <div className='text-sm text-gray-600 dark:text-gray-400'>
                     新用户注册后是否需要管理员审核才能登录（关闭后新用户注册即可直接登录）
                   </div>
                 </div>
-                <div className='flex items-center'>
+                <div className='flex items-center flex-shrink-0'>
                   <button
                     type="button"
                     className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-purple-600 focus:ring-offset-2 ${
@@ -974,17 +974,17 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
 
 
             {/* 自动清理非活跃用户设置 */}
-            <div className='p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700'>
-              <div className='flex items-center justify-between mb-4'>
-                <div>
-                  <div className='font-medium text-gray-900 dark:text-gray-100'>
+            <div className='mt-6 p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700'>
+              <div className='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-4'>
+                <div className='flex-1'>
+                  <div className='font-medium text-gray-900 dark:text-gray-100 mb-1'>
                     自动清理非活跃用户
                   </div>
                   <div className='text-sm text-gray-600 dark:text-gray-400'>
                     自动删除指定天数内未登录的非活跃用户账号
                   </div>
                 </div>
-                <div className='flex items-center'>
+                <div className='flex items-center flex-shrink-0'>
                   <button
                     type="button"
                     className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-blue-600 focus:ring-offset-2 ${
@@ -1042,10 +1042,11 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
               </div>
 
               {/* 天数设置 */}
-              <div className='flex items-center space-x-3'>
-                <label className='text-sm font-medium text-gray-700 dark:text-gray-300'>
+              <div className='flex flex-col sm:flex-row sm:items-center gap-3'>
+                <label className='text-sm font-medium text-gray-700 dark:text-gray-300 flex-shrink-0'>
                   保留天数：
                 </label>
+                <div className='flex items-center gap-3 flex-1'>
                 <input
                   type="number"
                   min="1"
@@ -1091,11 +1092,12 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
                       }
                     });
                   }}
-                  className='w-20 px-3 py-1 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
+                  className='w-24 px-3 py-1.5 text-sm border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
                 />
-                <span className='text-sm text-gray-600 dark:text-gray-400'>
+                <span className='text-sm text-gray-600 dark:text-gray-400 flex-1'>
                   天（注册后超过此天数且从未登入的用户将被自动删除）
                 </span>
+                </div>
               </div>
             </div>
           </div>
@@ -1118,8 +1120,8 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
       </div>
 
       {/* 审核名单 */}
-      <div className='p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800'>
-        <div className='flex items-center justify-between mb-3'>
+      <div className='mt-6 p-4 bg-yellow-50 dark:bg-yellow-900/20 rounded-lg border border-yellow-200 dark:border-yellow-800'>
+        <div className='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4'>
           <div>
             <div className='font-medium text-gray-900 dark:text-gray-100'>待审核注册</div>
             <div className='text-sm text-gray-600 dark:text-gray-400'>通过审核后才能登录网站</div>
@@ -1137,9 +1139,9 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
             {pendingUsers.map((user) => (
               <div
                 key={user.username}
-                className='flex items-center justify-between p-3 rounded-lg bg-white dark:bg-gray-800 border border-yellow-200 dark:border-yellow-800/60 shadow-sm'
+                className='flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-lg bg-white dark:bg-gray-800 border border-yellow-200 dark:border-yellow-800/60 shadow-sm'
               >
-                <div>
+                <div className='flex-1'>
                   <div className='text-sm font-medium text-gray-900 dark:text-gray-100'>
                     {user.username}
                   </div>
@@ -1149,7 +1151,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
                       : '注册时间未知'}
                   </div>
                 </div>
-                <div className='flex items-center space-x-2'>
+                <div className='flex items-center gap-2 flex-shrink-0'>
                   <button
                     onClick={() => handleApproveUser(user.username)}
                     className={buttonStyles.roundedSuccess}
