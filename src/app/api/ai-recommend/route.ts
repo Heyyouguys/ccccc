@@ -259,17 +259,37 @@ ${youtubeEnabled && youtubeConfig.apiKey ? `### YouTube推荐格式：
       console.log(`使用标准模型 ${requestModel}，max_tokens: ${tokenLimit}`);
     }
 
-    // 调用AI API
-    const openaiResponse = await fetch(aiConfig.apiUrl.endsWith('/chat/completions') 
-      ? aiConfig.apiUrl 
-      : `${aiConfig.apiUrl.replace(/\/$/, '')}/chat/completions`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${aiConfig.apiKey}`,
-      },
-      body: JSON.stringify(requestBody),
-    });
+    // 调用AI API - 添加超时控制
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 60000); // 60秒超时
+    
+    let openaiResponse;
+    try {
+      openaiResponse = await fetch(aiConfig.apiUrl.endsWith('/chat/completions')
+        ? aiConfig.apiUrl
+        : `${aiConfig.apiUrl.replace(/\/$/, '')}/chat/completions`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${aiConfig.apiKey}`,
+        },
+        body: JSON.stringify(requestBody),
+        signal: controller.signal,
+      });
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        console.error('AI API请求超时');
+        return NextResponse.json({
+          error: 'AI服务响应超时（60秒）',
+          details: '请求超时，可能原因：\n1. API服务器响应慢\n2. 网络连接不稳定\n3. 模型处理时间过长\n\n建议：\n- 检查API地址是否正确\n- 尝试使用更快的模型\n- 检查网络连接',
+          timeout: true
+        }, { status: 504 });
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!openaiResponse.ok) {
       const errorData = await openaiResponse.text();

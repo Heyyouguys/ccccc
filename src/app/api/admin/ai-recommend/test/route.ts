@@ -49,19 +49,39 @@ export async function POST(request: NextRequest) {
 
     console.log('Testing AI API:', testUrl);
     
-    const response = await fetch(testUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
-        model: model || 'gpt-3.5-turbo',
-        messages: testMessages,
-        max_tokens: 50,
-        temperature: 0.1,
-      }),
-    });
+    // 添加30秒超时控制
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 30000);
+    
+    let response;
+    try {
+      response = await fetch(testUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          model: model || 'gpt-3.5-turbo',
+          messages: testMessages,
+          max_tokens: 50,
+          temperature: 0.1,
+        }),
+        signal: controller.signal,
+      });
+    } catch (error: any) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        return NextResponse.json({
+          error: '测试请求超时（30秒）',
+          details: 'API服务器响应时间过长，请检查：\n1. API地址是否正确\n2. 网络连接是否正常\n3. API服务是否可用',
+          timeout: true
+        }, { status: 504 });
+      }
+      throw error;
+    } finally {
+      clearTimeout(timeoutId);
+    }
 
     if (!response.ok) {
       const errorText = await response.text();
