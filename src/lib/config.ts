@@ -313,10 +313,17 @@ export async function getConfig(): Promise<AdminConfig> {
   // db 中无配置，执行一次初始化
   if (!adminConfig) {
     adminConfig = await getInitConfig("");
+    // 初始化时需要保存
+    await db.saveAdminConfig(adminConfig);
   }
+  
   adminConfig = await configSelfCheck(adminConfig);
   cachedConfig = adminConfig;
-  db.saveAdminConfig(cachedConfig);
+  
+  // 注意：这里不再自动保存配置
+  // 配置的保存应该由调用方明确控制
+  // 这样可以避免在注册等场景下的竞态条件
+  
   return cachedConfig;
 }
 

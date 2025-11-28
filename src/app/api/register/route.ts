@@ -132,16 +132,13 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: '该用户名已被注册' }, { status: 400 });
       }
 
-      // 先获取配置来检查是否需要审核（在注册用户之前）
+      // 先获取配置来检查是否需要审核（在注册用户之前，此时用户还不在数据库中）
       const config = await getConfig();
       
       // 根据配置决定是否需要审核
       const requireApproval = config.UserConfig.RequireApproval !== false; // 默认需要审核
       
-      // 注册用户到数据库
-      await db.registerUser(username, password);
-
-      // 创建新用户配置
+      // 创建新用户配置对象
       const newUser = {
         username: username,
         role: 'user' as const,
@@ -150,10 +147,14 @@ export async function POST(req: NextRequest) {
         ...(requireApproval ? {} : { approvedAt: Date.now() }) // 如果不需要审核，设置审核通过时间
       };
 
-      // 将新用户添加到配置中
+      // 先将新用户添加到配置中
       config.UserConfig.Users.push(newUser);
 
-      // 保存更新后的配置（直接保存，不要再调用 getConfig）
+      // 然后注册用户到数据库
+      await db.registerUser(username, password);
+
+      // 保存更新后的配置
+      // 注意：这里保存的配置已经包含了新用户，且 approved 状态正确
       await db.saveAdminConfig(config);
 
       // 清除缓存，确保下次获取配置时是最新的
