@@ -907,6 +907,71 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
                 </span>
               </div>
             </div>
+            {/* 需要审核设置 */}
+            <div className='mt-4 p-4 bg-purple-50 dark:bg-purple-900/20 rounded-lg border border-purple-200 dark:border-purple-800'>
+              <div className='flex items-center justify-between'>
+                <div>
+                  <div className='font-medium text-gray-900 dark:text-gray-100'>
+                    需要审核
+                  </div>
+                  <div className='text-sm text-gray-600 dark:text-gray-400'>
+                    新用户注册后是否需要管理员审核才能登录（关闭后新用户注册即可直接登录）
+                  </div>
+                </div>
+                <div className='flex items-center'>
+                  <button
+                    type="button"
+                    className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-purple-600 focus:ring-offset-2 ${
+                      config.UserConfig.RequireApproval !== false ? buttonStyles.toggleOn : buttonStyles.toggleOff
+                    }`}
+                    role="switch"
+                    aria-checked={config.UserConfig.RequireApproval !== false}
+                    onClick={async () => {
+                      await withLoading('toggleRequireApproval', async () => {
+                        try {
+                          const response = await fetch('/api/admin/config', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                              ...config,
+                              UserConfig: {
+                                ...config.UserConfig,
+                                RequireApproval: config.UserConfig.RequireApproval === false ? true : false
+                              }
+                            })
+                          });
+                          
+                          if (response.ok) {
+                            await refreshConfig();
+                            showAlert({
+                              type: 'success',
+                              title: '设置已更新',
+                              message: config.UserConfig.RequireApproval === false ? '已开启注册审核' : '已关闭注册审核',
+                              timer: 2000
+                            });
+                          } else {
+                            throw new Error('更新配置失败');
+                          }
+                        } catch (err) {
+                          showError(err instanceof Error ? err.message : '操作失败', showAlert);
+                        }
+                      });
+                    }}
+                  >
+                    <span
+                      aria-hidden="true"
+                      className={`pointer-events-none inline-block h-5 w-5 rounded-full ${buttonStyles.toggleThumb} shadow transform ring-0 transition duration-200 ease-in-out ${
+                        config.UserConfig.RequireApproval !== false ? buttonStyles.toggleThumbOn : buttonStyles.toggleThumbOff
+                      }`}
+                    />
+                  </button>
+                  <span className='ml-3 text-sm font-medium text-gray-900 dark:text-gray-100'>
+                    {config.UserConfig.RequireApproval !== false ? '开启' : '关闭'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
 
             {/* 自动清理非活跃用户设置 */}
             <div className='p-4 bg-gray-50 dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700'>
