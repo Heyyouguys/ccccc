@@ -1636,9 +1636,9 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
                               )}
                           </div>
                         </td>
-                        <td className='px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-2'>
+                        <td className='px-6 py-4 whitespace-nowrap text-right text-sm font-medium'>
                           {isPending ? (
-                            <div className='flex items-center justify-end space-x-2'>
+                            <div className='flex flex-wrap items-center justify-end gap-2'>
                               <button
                                 onClick={() => handleApproveUser(user.username)}
                                 disabled={isLoading(`approveUser_${user.username}`)}
@@ -1655,7 +1655,7 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
                               </button>
                             </div>
                           ) : (
-                            <>
+                            <div className='flex flex-wrap items-center justify-end gap-2'>
                               {/* 修改密码按钮 */}
                               {canChangePassword && (
                                 <button
@@ -1712,16 +1712,16 @@ const UserConfig = ({ config, role, refreshConfig }: UserConfigProps) => {
                                     ))}
                                 </>
                               )}
-                            </>
-                          )}
-                          {/* 删除用户按钮 - 放在最后，使用更明显的红色样式 */}
-                          {canDeleteUser && (
-                            <button
-                              onClick={() => handleDeleteUser(user.username)}
-                              className={buttonStyles.roundedDanger}
-                            >
-                              删除用户
-                            </button>
+                              {/* 删除用户按钮 - 放在最后，使用更明显的红色样式 */}
+                              {canDeleteUser && (
+                                <button
+                                  onClick={() => handleDeleteUser(user.username)}
+                                  className={buttonStyles.roundedDanger}
+                                >
+                                  删除用户
+                                </button>
+                              )}
+                            </div>
                           )}
                         </td>
                       </tr>
