@@ -14,7 +14,10 @@ interface AIRecommendConfigProps {
 
 const AIRecommendConfig = ({ config, refreshConfig }: AIRecommendConfigProps) => {
   const [isLoading, setIsLoading] = useState(false);
+  const [isFetchingModels, setIsFetchingModels] = useState(false);
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
+  const [availableModels, setAvailableModels] = useState<string[]>([]);
+  const [showModelDropdown, setShowModelDropdown] = useState(false);
   
   const [aiSettings, setAiSettings] = useState({
     enabled: false,
@@ -159,6 +162,42 @@ const AIRecommendConfig = ({ config, refreshConfig }: AIRecommendConfigProps) =>
       showMessage('error', errorMessage);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // 获取可用模型列表
+  const handleFetchModels = async () => {
+    if (!aiSettings.apiUrl.trim() || !aiSettings.apiKey.trim()) {
+      showMessage('error', '请先填写API地址和密钥');
+      return;
+    }
+
+    setIsFetchingModels(true);
+    try {
+      const response = await fetch('/api/admin/ai-recommend/models', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          apiUrl: aiSettings.apiUrl,
+          apiKey: aiSettings.apiKey
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || '获取模型列表失败');
+      }
+
+      const data = await response.json();
+      setAvailableModels(data.models || []);
+      setShowModelDropdown(true);
+      showMessage('success', `成功获取 ${data.count} 个可用模型`);
+    } catch (err) {
+      showMessage('error', err instanceof Error ? err.message : '获取模型列表失败');
+      // 即使失败也允许手动输入
+      setShowModelDropdown(false);
+    } finally {
+      setIsFetchingModels(false);
     }
   };
 
@@ -310,34 +349,95 @@ const AIRecommendConfig = ({ config, refreshConfig }: AIRecommendConfigProps) =>
 
             {/* 模型名称 */}
             <div>
-              <label className='block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2'>
-                模型名称
-              </label>
-              <input
-                type='text'
-                value={aiSettings.model}
-                onChange={(e) => setAiSettings(prev => ({ ...prev, model: e.target.value }))}
-                className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
-                placeholder='请自行填入正确的官方API模型名称，如：gpt-5'
-              />
-              <div className='mt-2 text-xs text-gray-500 dark:text-gray-400'>
-                <p className='mb-1'>常用模型参考（建议使用支持联网搜索的模型）：</p>
-                <p className='mb-2 text-orange-600 dark:text-orange-400'>⚠️ 请确保填入的模型名称与API提供商的官方文档一致</p>
-                <div className='flex flex-wrap gap-2'>
-                  {MODEL_EXAMPLES.map((example, index) => (
-                    <button
-                      key={index}
-                      type='button'
-                      onClick={() => {
-                        const modelName = example.split(' (')[0];
-                        setAiSettings(prev => ({ ...prev, model: modelName }));
-                      }}
-                      className='inline-block px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded cursor-pointer transition-colors'
-                    >
-                      {example}
-                    </button>
-                  ))}
+              <div className='flex items-center justify-between mb-2'>
+                <label className='block text-sm font-medium text-gray-700 dark:text-gray-300'>
+                  模型名称
+                </label>
+                <button
+                  type='button'
+                  onClick={handleFetchModels}
+                  disabled={isFetchingModels || !aiSettings.apiUrl.trim() || !aiSettings.apiKey.trim()}
+                  className='flex items-center px-3 py-1 text-xs bg-purple-600 hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed text-white rounded-lg transition-colors'
+                >
+                  {isFetchingModels ? (
+                    <>
+                      <div className='w-3 h-3 border border-white border-t-transparent rounded-full animate-spin mr-1'></div>
+                      获取中...
+                    </>
+                  ) : (
+                    <>
+                      <svg className='w-3 h-3 mr-1' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                        <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15' />
+                      </svg>
+                      自动获取模型
+                    </>
+                  )}
+                </button>
+              </div>
+              
+              {/* 模型选择下拉框或输入框 */}
+              {showModelDropdown && availableModels.length > 0 ? (
+                <div className='space-y-2'>
+                  <select
+                    value={aiSettings.model}
+                    onChange={(e) => setAiSettings(prev => ({ ...prev, model: e.target.value }))}
+                    className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
+                  >
+                    <option value=''>请选择模型</option>
+                    {availableModels.map((model) => (
+                      <option key={model} value={model}>
+                        {model}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type='button'
+                    onClick={() => {
+                      setShowModelDropdown(false);
+                      setAvailableModels([]);
+                    }}
+                    className='text-xs text-blue-600 dark:text-blue-400 hover:underline'
+                  >
+                    切换到手动输入
+                  </button>
                 </div>
+              ) : (
+                <input
+                  type='text'
+                  value={aiSettings.model}
+                  onChange={(e) => setAiSettings(prev => ({ ...prev, model: e.target.value }))}
+                  className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
+                  placeholder='请填入模型名称，如：gpt-5，或点击上方按钮自动获取'
+                />
+              )}
+              
+              <div className='mt-2 text-xs text-gray-500 dark:text-gray-400'>
+                <p className='mb-1'>
+                  <span className='text-blue-600 dark:text-blue-400'>💡 提示：</span>
+                  填写API地址和密钥后，点击"自动获取模型"按钮即可从API获取可用模型列表
+                </p>
+                <p className='mb-2 text-orange-600 dark:text-orange-400'>⚠️ 如果自动获取失败，可以手动输入模型名称</p>
+                <details className='mt-2'>
+                  <summary className='cursor-pointer hover:text-gray-700 dark:hover:text-gray-300'>
+                    📝 常用模型参考 (点击展开)
+                  </summary>
+                  <div className='mt-2 flex flex-wrap gap-2'>
+                    {MODEL_EXAMPLES.map((example, index) => (
+                      <button
+                        key={index}
+                        type='button'
+                        onClick={() => {
+                          const modelName = example.split(' (')[0];
+                          setAiSettings(prev => ({ ...prev, model: modelName }));
+                          setShowModelDropdown(false);
+                        }}
+                        className='inline-block px-2 py-1 text-xs bg-gray-100 dark:bg-gray-700 hover:bg-gray-200 dark:hover:bg-gray-600 rounded cursor-pointer transition-colors'
+                      >
+                        {example}
+                      </button>
+                    ))}
+                  </div>
+                </details>
               </div>
             </div>
 
