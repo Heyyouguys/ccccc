@@ -137,11 +137,16 @@ export async function POST(req: NextRequest) {
 
       // 重新获取配置来添加用户
       const config = await getConfig();
+      
+      // 根据配置决定是否需要审核
+      const requireApproval = config.UserConfig.RequireApproval !== false; // 默认需要审核
+      
       const newUser = {
         username: username,
         role: 'user' as const,
-        approved: false,
+        approved: !requireApproval, // 根据配置设置审核状态
         createdAt: Date.now(), // 设置注册时间戳
+        ...(requireApproval ? {} : { approvedAt: Date.now() }) // 如果不需要审核，设置审核通过时间
       };
 
       config.UserConfig.Users.push(newUser);
@@ -152,15 +157,34 @@ export async function POST(req: NextRequest) {
       // 清除缓存，确保下次获取配置时是最新的
       clearConfigCache();
 
-      // 注册成功后进入审核流程，暂不下发登录态
-      return NextResponse.json(
-        {
-          ok: true,
-          pending: true,
-          message: '注册信息已提交审核，请等待管理员通过后再登录'
-        },
-        { status: 202 }
-      );
+      // 根据审核状态返回不同的响应
+      if (requireApproval) {
+        // 需要审核
+        return NextResponse.json(
+          {
+            ok: true,
+            pending: true,
+            message: '注册信息已提交审核，请等待管理员通过后再登录'
+          },
+          { status: 202 }
+        );
+      } else {
+        // 无需审核，直接登录
+        const authCookie = await generateAuthCookie(username, password, 'user');
+        return NextResponse.json(
+          {
+            ok: true,
+            pending: false,
+            message: '注册成功，已自动登录'
+          },
+          {
+            status: 200,
+            headers: {
+              'Set-Cookie': `auth=${authCookie}; Path=/; HttpOnly; SameSite=Strict; ${process.env.NODE_ENV === 'production' ? 'Secure;' : ''} Max-Age=${60 * 60 * 24 * 7}` // 7天有效期
+            }
+          }
+        );
+      }
     } catch (err) {
       console.error('注册用户失败', err);
       return NextResponse.json({ error: '注册失败，请稍后重试' }, { status: 500 });

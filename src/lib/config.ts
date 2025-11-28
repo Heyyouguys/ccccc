@@ -226,6 +226,7 @@ async function getInitConfig(configFile: string, subConfig: {
     },
     UserConfig: {
       AllowRegister: true, // 默认允许注册
+      RequireApproval: true, // 默认需要审核
       Users: [],
     },
     SourceConfig: [],
@@ -365,6 +366,10 @@ export async function configSelfCheck(adminConfig: AdminConfig): Promise<AdminCo
   // 确保 AllowRegister 有默认值
   if (adminConfig.UserConfig.AllowRegister === undefined) {
     adminConfig.UserConfig.AllowRegister = true;
+  }
+  // 确保 RequireApproval 有默认值
+  if (adminConfig.UserConfig.RequireApproval === undefined) {
+    adminConfig.UserConfig.RequireApproval = true;
   }
   if (!adminConfig.SourceConfig || !Array.isArray(adminConfig.SourceConfig)) {
     adminConfig.SourceConfig = [];
