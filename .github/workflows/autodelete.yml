@@ -1,109 +1,24 @@
-name: Cleanup lunatv – keep recent versions
+name: Remove old artifacts
 
-# 只需要手动触发
 on:
-  workflow_dispatch:
+  schedule:
+    # Every day at 1am
+    - cron: '0 1 * * *'
 
 jobs:
-  cleanup:
+  remove-old-artifacts:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # For private repos
     permissions:
-      contents: read          # 只读代码
-      packages: read          # 读取包信息（实际删除靠 PAT）
+      actions: write
 
     steps:
-      # -------------------------------------------------
-      # 1️⃣ 用拥有 delete:packages 权限的 PAT 登录 gh
-      - name: Authenticate gh with PAT
-        env:
-          GH_TOKEN: ${{ secrets.PAT }}   # <‑‑ 必须是带 delete:packages 的 PAT
-        run: |
-          echo "$GH_TOKEN" | gh auth login --with-token
-
-      # -------------------------------------------------
-      # 2️⃣ 配置常量
-      - name: Set variables
-        id: vars
-        run: |
-          # ---- 目标 package 名称（区分大小写）----
-          echo "PACKAGE=lunatv" >> $GITHUB_OUTPUT
-
-          # ---- 保留阈值：这里设为 10 分钟（600 秒）----
-          # 若想改成天数，只需要把下面的 -d 参数改成 '-10 days'
-          echo "CUT_OFF=$(date -d '-10 minutes' +%s)" >> $GITHUB_OUTPUT
-
-          # ---- 当前时间（用于调试）----
-          echo "NOW=$(date +%s)" >> $GITHUB_OUTPUT
-
-      # -------------------------------------------------
-      # 3️⃣ 主体：获取所有版本 → 过滤（仅保留最近） → 删除其余
-      - name: Delete old untagged/old versions
-        env:
-          OWNER: ${{ github.repository_owner }}
-          PACKAGE: ${{ steps.vars.outputs.PACKAGE }}
-          CUT_OFF: ${{ steps.vars.outputs.CUT_OFF }}
-          NOW: ${{ steps.vars.outputs.NOW }}
-        run: |
-          echo "=== Cleanup for $OWNER/$PACKAGE ==="
-          echo "Current timestamp (NOW)      : $NOW"
-          echo "Cut‑off timestamp (keep ≥)    : $CUT_OFF  (≈ $(date -d @$CUT_OFF))"
-
-          # ---------- ① 统一函数获取所有版本 ----------
-          get_versions() {
-            local base=$1   # users 或 orgs
-            gh api "/$base/$OWNER/packages/container/$PACKAGE/versions" \
-              --paginate -q '[.[]]' 2>/dev/null || echo "[]"
-          }
-
-          # ---------- ② 先尝试用户路径 ----------
-          VERSIONS=$(get_versions users)
-          API_BASE="/users/$OWNER"
-
-          # ---------- ③ 若为空，改为组织路径 ----------
-          if [ "$VERSIONS" = "[]" ]; then
-            echo "User path empty → trying organization path"
-            VERSIONS=$(get_versions orgs)
-            API_BASE="/orgs/$OWNER"
-          fi
-
-          # ---------- ④ 检查返回是否合法 ----------
-          if ! echo "$VERSIONS" | jq . >/dev/null 2>&1; then
-            echo "❌ Failed to parse JSON from GitHub API – abort"
-            exit 1
-          fi
-
-          TOTAL=$(echo "$VERSIONS" | jq 'length')
-          echo "Found $TOTAL version(s) in the package"
-
-          if [ "$TOTAL" -le 1 ]; then
-            echo "Only $TOTAL version(s) – nothing to delete"
-            exit 0
-          fi
-
-          # ---------- ⑤ 过滤出 **需要删除** 的版本 ----------
-          # 条件：
-          #   1. created_at 早于 CUT_OFF（即太旧）
-          #   2. （可选）如果你只想保留 *未打 tag* 的最新版本，可再加上 tags 过滤；
-          #      这里我们只依据时间，不管有没有 tag。
-          TO_DELETE=$(echo "$VERSIONS" |
-            jq -r --argjson cutoff "$CUT_OFF" '
-              .[] |
-              select((.created_at | fromdate) < $cutoff) |
-              .id')
-          DELETE_COUNT=$(echo "$TO_DELETE" | grep -c . || echo 0)
-          echo "🗑️  $DELETE_COUNT version(s) older than the cut‑off will be removed"
-
-          if [ "$DELETE_COUNT" -eq 0 ]; then
-            echo "No old versions to delete"
-            exit 0
-          fi
-
-          # ---------- ⑥ 实际删除 ----------
-          echo "$TO_DELETE" | while read -r id; do
-            echo "Deleting version $id ..."
-            gh api -X DELETE "$API_BASE/packages/container/$PACKAGE/versions/$id" \
-              && echo "  ✅ deleted" \
-              || echo "  ❌ delete failed (status $?)"
-          done
-
-          echo "=== Cleanup finished ==="
+    - name: Remove old artifacts
+      uses: c-hive/gha-remove-artifacts@v1
+      with:
+        age: '1 month' # '<number> <unit>', e.g. 5 days, 2 years, 90 seconds, parsed by Moment.js
+        # Optional inputs
+        # skip-tags: true
+        # skip-recent: 5
