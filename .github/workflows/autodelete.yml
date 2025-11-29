@@ -3,56 +3,94 @@ on:
   schedule:
     - cron: '0 0 * * *'
   workflow_dispatch:
+
 jobs:
   cleanup-packages:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v2
+
       - name: Set up Python
         uses: actions/setup-python@v2
         with:
           python-version: '3.x'
+
       - name: Install dependencies
         run: pip install requests
+
+      - name: Check GitHub API
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT }}
+          REPO: ${{ github.repository }}
+        run: |
+          curl -H "Authorization: token $GITHUB_TOKEN" \
+               -H "Accept: application/vnd.github+json" \
+               https://api.github.com/user
+
+      - name: List Packages
+        env:
+          GITHUB_TOKEN: ${{ secrets.PAT }}
+          REPO: ${{ github.repository }}
+        run: |
+          curl -H "Authorization: token $GITHUB_TOKEN" \
+               -H "Accept: application/vnd.github+json" \
+               https://api.github.com/user/packages?package_type=container
+
       - name: Retain latest package version
         env:
           GITHUB_TOKEN: ${{ secrets.PAT }}
           REPO: ${{ github.repository }}
         run: |
           python -c "
-          import requests, os, json
-          from datetime import datetime
+          import requests, os, json, sys
           
-          owner, repo = os.environ['REPO'].split('/')
-          token = os.environ['GITHUB_TOKEN']
-          api_url = f'https://api.github.com/user/packages/container/{repo}/versions'
-          headers = {
-              'Accept': 'application/vnd.github+json',
-              'Authorization': f'token {token}',
-              'X-GitHub-Api-Version': '2022-11-28'
-          }
+          def log(message):
+              print(message, flush=True)
           
-          response = requests.get(api_url, headers=headers)
-          if response.status_code != 200:
-              print(f'Error: API request failed with status code {response.status_code}')
-              exit(1)
-          
-          versions = response.json()
-          if not versions:
-              print('No package versions found.')
-              exit(0)
-          
-          sorted_versions = sorted(versions, key=lambda x: x.get('created_at', ''), reverse=True)
-          latest_version = sorted_versions[0]
-          print(f'Keeping latest version: {latest_version.get('id', 'Unknown ID')}')
-          
-          for version in sorted_versions[1:]:
-              version_id = version.get('id')
-              if version_id:
-                  delete_url = f'{api_url}/{version_id}'
-                  delete_response = requests.delete(delete_url, headers=headers)
-                  print(f'Deleted version {version_id}: Status {delete_response.status_code}')
-          
-          print('Cleanup process completed.')
+          try:
+              owner, repo = os.environ['REPO'].split('/')
+              token = os.environ['GITHUB_TOKEN']
+              api_url = f'https://api.github.com/user/packages/container/{repo}/versions'
+              headers = {
+                  'Accept': 'application/vnd.github+json',
+                  'Authorization': f'token {token}',
+                  'X-GitHub-Api-Version': '2022-11-28'
+              }
+              
+              log(f'Requesting package versions for {repo}')
+              response = requests.get(api_url, headers=headers)
+              log(f'API Response Status Code: {response.status_code}')
+              log(f'API Response Headers: {json.dumps(dict(response.headers), indent=2)}')
+              log(f'API Response Content: {response.text[:1000]}...')
+              
+              response.raise_for_status()
+              
+              versions = response.json()
+              log(f'Found {len(versions)} versions')
+              
+              if not versions:
+                  log('No package versions found.')
+                  sys.exit(0)
+              
+              sorted_versions = sorted(versions, key=lambda x: x.get('created_at', ''), reverse=True)
+              latest_version = sorted_versions[0]
+              log(f'Keeping latest version: {latest_version.get('id', 'Unknown ID')}')
+              
+              for version in sorted_versions[1:]:
+                  version_id = version.get('id')
+                  if version_id:
+                      delete_url = f'{api_url}/{version_id}'
+                      delete_response = requests.delete(delete_url, headers=headers)
+                      log(f'Deleted version {version_id}: Status {delete_response.status_code}')
+                  else:
+                      log(f'Warning: Version without ID found: {version}')
+              
+              log('Cleanup process completed successfully.')
+          except Exception as e:
+              log(f'Error occurred: {str(e)}')
+              log(f'Error type: {type(e).__name__}')
+              log(f'Error details: {repr(e)}')
+              sys.exit(1)
           "
+
