@@ -1,57 +1,102 @@
-name: Cleanup Untagged Versions
+name: Cleanup lunatv – Untagged >10d
 
+# 手动触发或每天凌晨 2 点（UTC）运行
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 2 * * *'
+    - cron: '0 2 * * *'   # 每天 02:00 UTC
 
 jobs:
   cleanup:
     runs-on: ubuntu-latest
+    # 只需要读取代码和包的权限；真正的删除依赖 PAT
+    permissions:
+      contents: read
+      packages: read
+
     steps:
-      - name: Delete all untagged package versions
+      # -------------------------------------------------
+      # 1️⃣ 使用 PAT 登录 gh（必须有 delete:packages）
+      - name: Authenticate gh with PAT
         env:
           GH_TOKEN: ${{ secrets.PAT }}
-          OWNER: ${{ github.repository_owner }}
-          PACKAGE: ${{ github.event.repository.name }}
         run: |
-          echo "Cleaning up untagged versions for $OWNER/$PACKAGE"
-          
-          # 尝试 user 路径
-          VERSIONS=$(gh api /users/$OWNER/packages/container/$PACKAGE/versions --paginate 2>/dev/null || echo "[]")
-          
-          # 如果失败，尝试 org 路径
+          # 将 token 直接喂给 gh
+          echo "$GH_TOKEN" | gh auth login --with-token
+
+      # -------------------------------------------------
+      # 2️⃣ 设定常量
+      - name: Set variables
+        id: vars
+        run: |
+          echo "PACKAGE= lunatv" >> $GITHUB_OUTPUT   # 待清理的 package 名称
+          # 10 天前的时间戳（秒）
+          echo "CUT_OFF=$(date -d '-10 days' +%s)" >> $GITHUB_OUTPUT
+          # 当前时间戳（用于调试）
+          echo "NOW=$(date +%s)" >> $GITHUB_OUTPUT
+
+      # -------------------------------------------------
+      # 3️⃣ 主体逻辑：获取版本 → 过滤 → 删除
+      - name: Delete untagged versions older than 10 days
+        env:
+          OWNER: ${{ github.repository_owner }}
+          PACKAGE: ${{ steps.vars.outputs.PACKAGE }}
+          CUT_OFF: ${{ steps.vars.outputs.CUT_OFF }}
+          NOW: ${{ steps.vars.outputs.NOW }}
+        run: |
+          echo "=== Cleanup for $OWNER/$PACKAGE ==="
+          echo "Cut‑off timestamp (10d ago): $CUT_OFF"
+          echo "Current timestamp: $NOW"
+
+          # ---------- ① 统一函数获取所有版本 ----------
+          get_versions() {
+            local base=$1   # users 或 orgs
+            gh api "/$base/$OWNER/packages/container/$PACKAGE/versions" \
+              --paginate -q '[.[]]' 2>/dev/null || echo "[]"
+          }
+
+          # ---------- ② 先尝试用户路径 ----------
+          VERSIONS=$(get_versions users)
+          API_BASE="/users/$OWNER"
+
+          # ---------- ③ 若为空，改为组织路径 ----------
           if [ "$VERSIONS" = "[]" ]; then
-            echo "Trying org path..."
-            VERSIONS=$(gh api /orgs/$OWNER/packages/container/$PACKAGE/versions --paginate 2>/dev/null || echo "[]")
+            echo "User path empty → trying org path"
+            VERSIONS=$(get_versions orgs)
             API_BASE="/orgs/$OWNER"
-          else
-            API_BASE="/users/$OWNER"
           fi
-          
-          # 统计总数
+
+          # ---------- ④ 检查返回是否合法 ----------
+          if ! echo "$VERSIONS" | jq . >/dev/null 2>&1; then
+            echo "❌ Failed to parse JSON from API – abort"
+            exit 1
+          fi
+
           TOTAL=$(echo "$VERSIONS" | jq 'length')
-          echo "Found $TOTAL total version(s)"
-          
-          # 找出所有 untagged 版本（tags 数组为空的）
-          UNTAGGED=$(echo "$VERSIONS" | jq -r '.[] | select(.metadata.container.tags | length == 0) | .id')
-          UNTAGGED_COUNT=$(echo "$UNTAGGED" | grep -c . || echo 0)
-          
-          echo "Found $UNTAGGED_COUNT untagged version(s) to delete"
-          
-          if [ "$UNTAGGED_COUNT" -eq 0 ]; then
-            echo "No untagged versions to delete"
+          echo "Found $TOTAL total version(s) in the package"
+
+          # ---------- ⑤ 过滤出满足条件的版本 ----------
+          # 条件：① tags 数组为空   ② created_at 早于 cut‑off
+          UNTAGGED_OLD=$(echo "$VERSIONS" |
+            jq -r --argjson cutoff "$CUT_OFF" '
+              .[] |
+              select(.metadata?.container?.tags | length == 0) |   # 没有 tag
+              select((.created_at | fromdate) < $cutoff) |      # 超过 10 天
+              .id')
+          COUNT=$(echo "$UNTAGGED_OLD" | grep -c . || echo 0)
+          echo "🗑️  $COUNT untagged version(s) older than 10 days will be deleted"
+
+          if [ "$COUNT" -eq 0 ]; then
+            echo "Nothing to delete – all untagged versions are fresh"
             exit 0
           fi
-          
-          # 删除所有 untagged 版本
-          echo "$UNTAGGED" | while read -r id; do
-            if [ -n "$id" ]; then
-              echo "Deleting untagged version: $id"
-              gh api -X DELETE "$API_BASE/packages/container/$PACKAGE/versions/$id" \
-                && echo "  ✓ Deleted" \
-                || echo "  ✗ Failed"
-            fi
+
+          # ---------- ⑥ 实际删除 ----------
+          echo "$UNTAGGED_OLD" | while read -r id; do
+            echo "Deleting version $id ..."
+            gh api -X DELETE "$API_BASE/packages/container/$PACKAGE/versions/$id" \
+              && echo "  ✅ deleted" \
+              || echo "  ❌ delete failed (status $?)"
           done
-          
-          echo "Cleanup completed!"
+
+          echo "=== Cleanup finished ==="
