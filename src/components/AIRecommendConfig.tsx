@@ -18,6 +18,7 @@ const AIRecommendConfig = ({ config, refreshConfig }: AIRecommendConfigProps) =>
   const [message, setMessage] = useState<{ type: 'success' | 'error'; text: string } | null>(null);
   const [availableModels, setAvailableModels] = useState<string[]>([]);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const [modelSearchQuery, setModelSearchQuery] = useState('');
   
   const [aiSettings, setAiSettings] = useState({
     enabled: false,
@@ -201,6 +202,11 @@ const AIRecommendConfig = ({ config, refreshConfig }: AIRecommendConfigProps) =>
     }
   };
 
+  // 过滤模型列表
+  const filteredModels = availableModels.filter((model: string) =>
+    model.toLowerCase().includes(modelSearchQuery.toLowerCase())
+  );
+
   return (
     <div className='space-y-6'>
       {/* 消息提示 */}
@@ -378,23 +384,57 @@ const AIRecommendConfig = ({ config, refreshConfig }: AIRecommendConfigProps) =>
               {/* 模型选择下拉框或输入框 */}
               {showModelDropdown && availableModels.length > 0 ? (
                 <div className='space-y-2'>
+                  {/* 搜索框 */}
+                  <div className='relative'>
+                    <input
+                      type='text'
+                      value={modelSearchQuery}
+                      onChange={(e) => setModelSearchQuery(e.target.value)}
+                      placeholder='搜索模型...'
+                      className='w-full px-3 py-2 pl-9 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
+                    />
+                    <svg
+                      className='absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400'
+                      fill='none'
+                      stroke='currentColor'
+                      viewBox='0 0 24 24'
+                    >
+                      <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z' />
+                    </svg>
+                  </div>
+                  
+                  {/* 模型下拉选择 */}
                   <select
                     value={aiSettings.model}
                     onChange={(e) => setAiSettings(prev => ({ ...prev, model: e.target.value }))}
                     className='w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-gray-100 focus:ring-2 focus:ring-blue-500 focus:border-blue-500'
+                    size={Math.min(filteredModels.length + 1, 8)}
                   >
                     <option value=''>请选择模型</option>
-                    {availableModels.map((model) => (
-                      <option key={model} value={model}>
-                        {model}
-                      </option>
-                    ))}
+                    {filteredModels.length > 0 ? (
+                      filteredModels.map((model) => (
+                        <option key={model} value={model}>
+                          {model}
+                        </option>
+                      ))
+                    ) : (
+                      <option disabled>未找到匹配的模型</option>
+                    )}
                   </select>
+                  
+                  {/* 显示搜索结果统计 */}
+                  {modelSearchQuery && (
+                    <p className='text-xs text-gray-500 dark:text-gray-400'>
+                      找到 {filteredModels.length} 个匹配的模型
+                    </p>
+                  )}
+                  
                   <button
                     type='button'
                     onClick={() => {
                       setShowModelDropdown(false);
                       setAvailableModels([]);
+                      setModelSearchQuery('');
                     }}
                     className='text-xs text-blue-600 dark:text-blue-400 hover:underline'
                   >
