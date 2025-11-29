@@ -105,7 +105,8 @@ export async function POST(request: NextRequest) {
       apiKey: aiRecommendConfig.apiKey?.trim() || '',
       model: aiRecommendConfig.model?.trim() || 'gpt-3.5-turbo',
       temperature: aiRecommendConfig.temperature ?? 0.7,
-      maxTokens: aiRecommendConfig.maxTokens ?? 2000
+      maxTokens: aiRecommendConfig.maxTokens ?? 2000,
+      streamMode: aiRecommendConfig.streamMode ?? true
     };
 
     // 保存配置到数据库
