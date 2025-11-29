@@ -1,56 +1,57 @@
-name: Cleanup Old Versions
+name: Cleanup Untagged Versions
 
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 2 * * *'  # 每天凌晨2点运行
+    - cron: '0 2 * * *'
 
 jobs:
   cleanup:
     runs-on: ubuntu-latest
     steps:
-      - name: Cleanup old workflow runs
-        uses: Mattraks/delete-workflow-runs@main
-        with:
-          token: ${{ secrets.PAT }}
-          repository: ${{ github.repository }}
-          retain_days: 0
-          keep_minimum_runs: 1
-
-      - name: Cleanup old package versions
+      - name: Delete all untagged package versions
         env:
           GH_TOKEN: ${{ secrets.PAT }}
           OWNER: ${{ github.repository_owner }}
           PACKAGE: ${{ github.event.repository.name }}
         run: |
-          echo "Fetching package versions for $OWNER/$PACKAGE"
+          echo "Cleaning up untagged versions for $OWNER/$PACKAGE"
           
           # 尝试 user 路径
-          VERSIONS=$(gh api /users/$OWNER/packages/container/$PACKAGE/versions --jq 'sort_by(.created_at) | reverse' 2>/dev/null || echo "[]")
+          VERSIONS=$(gh api /users/$OWNER/packages/container/$PACKAGE/versions --paginate 2>/dev/null || echo "[]")
           
           # 如果失败，尝试 org 路径
           if [ "$VERSIONS" = "[]" ]; then
             echo "Trying org path..."
-            VERSIONS=$(gh api /orgs/$OWNER/packages/container/$PACKAGE/versions --jq 'sort_by(.created_at) | reverse' 2>/dev/null || echo "[]")
+            VERSIONS=$(gh api /orgs/$OWNER/packages/container/$PACKAGE/versions --paginate 2>/dev/null || echo "[]")
             API_BASE="/orgs/$OWNER"
           else
             API_BASE="/users/$OWNER"
           fi
           
+          # 统计总数
           TOTAL=$(echo "$VERSIONS" | jq 'length')
-          echo "Found $TOTAL version(s)"
+          echo "Found $TOTAL total version(s)"
           
-          if [ "$TOTAL" -le 1 ]; then
-            echo "Nothing to delete"
+          # 找出所有 untagged 版本（tags 数组为空的）
+          UNTAGGED=$(echo "$VERSIONS" | jq -r '.[] | select(.metadata.container.tags | length == 0) | .id')
+          UNTAGGED_COUNT=$(echo "$UNTAGGED" | grep -c . || echo 0)
+          
+          echo "Found $UNTAGGED_COUNT untagged version(s) to delete"
+          
+          if [ "$UNTAGGED_COUNT" -eq 0 ]; then
+            echo "No untagged versions to delete"
             exit 0
           fi
           
-          LATEST=$(echo "$VERSIONS" | jq -r '.[0].id')
-          echo "Keeping latest: $LATEST"
-          
-          echo "$VERSIONS" | jq -r '.[1:] | .[].id' | while read id; do
-            echo "Deleting version $id..."
-            gh api -X DELETE "$API_BASE/packages/container/$PACKAGE/versions/$id" && echo "  ✓ Deleted" || echo "  ✗ Failed"
+          # 删除所有 untagged 版本
+          echo "$UNTAGGED" | while read -r id; do
+            if [ -n "$id" ]; then
+              echo "Deleting untagged version: $id"
+              gh api -X DELETE "$API_BASE/packages/container/$PACKAGE/versions/$id" \
+                && echo "  ✓ Deleted" \
+                || echo "  ✗ Failed"
+            fi
           done
           
           echo "Cleanup completed!"
