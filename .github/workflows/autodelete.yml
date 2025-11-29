@@ -1,75 +1,73 @@
-      - name: Debug and Cleanup
+      - name: Cleanup old package versions
         env:
-          # 务必确保这里引用的是你设置的 secret 名字，通常是 PAT
           GITHUB_TOKEN: ${{ secrets.PAT }}
           REPO: ${{ github.repository }}
         run: |
-          python -c "
-          import requests, os, json, sys
-
-          # --- 1. 基础配置检查 ---
+          python3 << 'EOF'
+          import requests
+          import os
+          import sys
+          
           token = os.environ.get('GITHUB_TOKEN')
           repo_full = os.environ.get('REPO')
+          
           if not token or not repo_full:
-              print('❌ Error: GITHUB_TOKEN or REPO env var is missing')
+              print('Error: Missing environment variables')
               sys.exit(1)
-              
+          
           owner, repo_name = repo_full.split('/')
-          print(f'ℹ️  Repository: {repo_full}')
-          print(f'ℹ️  Owner: {owner}')
-          print(f'ℹ️  Repo Name: {repo_name}')
-          print(f'ℹ️  Token Length: {len(token)} (Should be > 0)')
-
+          print(f'Repository: {owner}/{repo_name}')
+          
           headers = {
               'Accept': 'application/vnd.github+json',
               'Authorization': f'token {token}',
               'X-GitHub-Api-Version': '2022-11-28'
           }
-
-          # --- 2. 检查 Token 权限和归属 ---
-          print('\n🔍 Checking Token Identity...')
-          r_user = requests.get('https://api.github.com/user', headers=headers)
-          if r_user.status_code == 200:
-              user_login = r_user.json().get('login')
-              print(f'✅ Token works! Logged in as: {user_login}')
-          else:
-              print(f'❌ Token invalid. Status: {r_user.status_code}')
-              print(f'Response: {r_user.text}')
-              sys.exit(1)
-
-          # --- 3. 尝试定位包 (关键步骤) ---
-          # 尝试两个常见的 API 路径：用户路径和组织路径
-          urls_to_test = [
-              (f'User Path', f'https://api.github.com/users/{owner}/packages/container/{repo_name}/versions'),
-              (f'Org Path', f'https://api.github.com/orgs/{owner}/packages/container/{repo_name}/versions')
-          ]
-
-          print('\n🔍 Testing Package Access...')
+          
+          user_url = f'https://api.github.com/users/{owner}/packages/container/{repo_name}/versions'
+          org_url = f'https://api.github.com/orgs/{owner}/packages/container/{repo_name}/versions'
+          
           success_url = None
           
-          for desc, url in urls_to_test:
-              print(f'Testing {desc}: {url} ...')
-              r = requests.get(url, headers=headers)
-              
+          r = requests.get(user_url, headers=headers)
+          if r.status_code == 200:
+              success_url = user_url
+              print('Using user path')
+          else:
+              r = requests.get(org_url, headers=headers)
               if r.status_code == 200:
-                  print(f'✅ Success! Found versions using {desc}.')
-                  success_url = url
-                  versions = r.json()
-                  print(f'ℹ️  Found {len(versions)} versions.')
-                  break
-              elif r.status_code == 403:
-                  print(f'❌ 403 Forbidden. Reason: {r.json().get("message")}')
-                  print('   -> 这意味着 Token 缺少 delete:packages 权限，或者缺少 SSO 授权。')
-              elif r.status_code == 404:
-                  print(f'❌ 404 Not Found.')
-                  print('   -> 这意味着包名不对，或者你用了用户路径去访问组织资源（反之亦然）。')
-
+                  success_url = org_url
+                  print('Using org path')
+          
           if not success_url:
-              print('\n❌ CRITICAL: Could not access package versions via any path.')
-              print('请检查：1. Token 是否勾选了 delete:packages。 2. 如果是组织仓库，Token 是否点了 "Configure SSO"。')
+              print('Failed to access package versions')
               sys.exit(1)
-
-          # --- 4. 如果成功，执行清理 (此处仅模拟) ---
-          print('\n✅ Configuration is correct. You can now run the delete logic.')
-          print('To enable deletion, replace this script with the actual deletion code using the successful URL detected above.')
-          "
+          
+          versions = requests.get(success_url, headers=headers).json()
+          if not versions:
+              print('No versions found')
+              sys.exit(0)
+          
+          sorted_versions = sorted(versions, key=lambda x: x.get('created_at', ''), reverse=True)
+          print(f'Found {len(sorted_versions)} versions')
+          
+          if len(sorted_versions) <= 1:
+              print('Nothing to delete')
+              sys.exit(0)
+          
+          latest = sorted_versions[0]
+          print(f'Keeping latest: {latest.get("id")} ({latest.get("created_at")})')
+          
+          deleted_count = 0
+          for version in sorted_versions[1:]:
+              vid = version.get('id')
+              print(f'Deleting version {vid}...')
+              resp = requests.delete(f'{success_url}/{vid}', headers=headers)
+              if resp.status_code == 204:
+                  deleted_count += 1
+                  print('  Deleted')
+              else:
+                  print(f'  Failed: {resp.status_code}')
+          
+          print(f'Complete: Deleted {deleted_count} old versions, kept 1 latest')
+          EOF
