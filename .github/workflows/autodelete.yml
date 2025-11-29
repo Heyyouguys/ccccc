@@ -1,52 +1,40 @@
-name: Cleanup lunatv – Untagged >10d
+name: Cleanup lunatv – keep only latest version
 
-# 手动触发或每天凌晨 2 点（UTC）运行
+# 仅手动触发
 on:
   workflow_dispatch:
-  schedule:
-    - cron: '0 2 * * *'   # 每天 02:00 UTC
 
 jobs:
   cleanup:
     runs-on: ubuntu-latest
-    # 只需要读取代码和包的权限；真正的删除依赖 PAT
     permissions:
-      contents: read
-      packages: read
+      contents: read          # 只读代码即可
+      packages: read          # 读取包信息（实际删除依赖 PAT）
 
     steps:
       # -------------------------------------------------
-      # 1️⃣ 使用 PAT 登录 gh（必须有 delete:packages）
+      # 1️⃣ 使用 PAT 登录 gh（必须有 delete:packages 权限）
       - name: Authenticate gh with PAT
         env:
           GH_TOKEN: ${{ secrets.PAT }}
         run: |
-          # 将 token 直接喂给 gh
           echo "$GH_TOKEN" | gh auth login --with-token
 
       # -------------------------------------------------
-      # 2️⃣ 设定常量
+      # 2️⃣ 设定常量（package 名称）
       - name: Set variables
         id: vars
         run: |
-          echo "PACKAGE= lunatv" >> $GITHUB_OUTPUT   # 待清理的 package 名称
-          # 10 天前的时间戳（秒）
-          echo "CUT_OFF=$(date -d '-10 days' +%s)" >> $GITHUB_OUTPUT
-          # 当前时间戳（用于调试）
-          echo "NOW=$(date +%s)" >> $GITHUB_OUTPUT
+          echo "PACKAGE=lunatv" >> $GITHUB_OUTPUT   # 目标 package 名称（区分大小写）
 
       # -------------------------------------------------
-      # 3️⃣ 主体逻辑：获取版本 → 过滤 → 删除
-      - name: Delete untagged versions older than 10 days
+      # 3️⃣ 主体逻辑：获取全部版本 → 找出最新 version → 删除其余
+      - name: Delete all but the newest version
         env:
           OWNER: ${{ github.repository_owner }}
           PACKAGE: ${{ steps.vars.outputs.PACKAGE }}
-          CUT_OFF: ${{ steps.vars.outputs.CUT_OFF }}
-          NOW: ${{ steps.vars.outputs.NOW }}
         run: |
-          echo "=== Cleanup for $OWNER/$PACKAGE ==="
-          echo "Cut‑off timestamp (10d ago): $CUT_OFF"
-          echo "Current timestamp: $NOW"
+          echo "=== Starting cleanup for $OWNER/$PACKAGE ==="
 
           # ---------- ① 统一函数获取所有版本 ----------
           get_versions() {
@@ -61,38 +49,44 @@ jobs:
 
           # ---------- ③ 若为空，改为组织路径 ----------
           if [ "$VERSIONS" = "[]" ]; then
-            echo "User path empty → trying org path"
+            echo "User path returned empty – trying organization path"
             VERSIONS=$(get_versions orgs)
             API_BASE="/orgs/$OWNER"
           fi
 
-          # ---------- ④ 检查返回是否合法 ----------
+          # ---------- ④ 检查返回的 JSON 是否有效 ----------
           if ! echo "$VERSIONS" | jq . >/dev/null 2>&1; then
-            echo "❌ Failed to parse JSON from API – abort"
+            echo "❌ Failed to parse JSON from GitHub API – abort"
             exit 1
           fi
 
           TOTAL=$(echo "$VERSIONS" | jq 'length')
-          echo "Found $TOTAL total version(s) in the package"
+          echo "Found $TOTAL version(s) in the package"
 
-          # ---------- ⑤ 过滤出满足条件的版本 ----------
-          # 条件：① tags 数组为空   ② created_at 早于 cut‑off
-          UNTAGGED_OLD=$(echo "$VERSIONS" |
-            jq -r --argjson cutoff "$CUT_OFF" '
-              .[] |
-              select(.metadata?.container?.tags | length == 0) |   # 没有 tag
-              select((.created_at | fromdate) < $cutoff) |      # 超过 10 天
-              .id')
-          COUNT=$(echo "$UNTAGGED_OLD" | grep -c . || echo 0)
-          echo "🗑️  $COUNT untagged version(s) older than 10 days will be deleted"
-
-          if [ "$COUNT" -eq 0 ]; then
-            echo "Nothing to delete – all untagged versions are fresh"
+          if [ "$TOTAL" -le 1 ]; then
+            echo "Only $TOTAL version(s) – nothing to delete"
             exit 0
           fi
 
-          # ---------- ⑥ 实际删除 ----------
-          echo "$UNTAGGED_OLD" | while read -r id; do
+          # ---------- ⑤ 找出最新的 version ----------
+          # 这里使用 created_at（ISO8601），取最大时间即为最新
+          LATEST_ID=$(echo "$VERSIONS" |
+            jq -r 'sort_by(.created_at) | last | .id')
+          echo "Latest version ID (to keep): $LATEST_ID"
+
+          # ---------- ⑥ 过滤出所有 **非最新** 的 version IDs ----------
+          TO_DELETE=$(echo "$VERSIONS" |
+            jq -r --arg keep "$LATEST_ID" '.[] | select(.id != $keep) | .id')
+          DELETE_COUNT=$(echo "$TO_DELETE" | grep -c . || echo 0)
+          echo "🗑️  $DELETE_COUNT version(s) will be removed (all except the newest)"
+
+          if [ "$DELETE_COUNT" -eq 0 ]; then
+            echo "Nothing to delete"
+            exit 0
+          fi
+
+          # ---------- ⑦ 删除 ----------
+          echo "$TO_DELETE" | while read -r id; do
             echo "Deleting version $id ..."
             gh api -X DELETE "$API_BASE/packages/container/$PACKAGE/versions/$id" \
               && echo "  ✅ deleted" \
