@@ -242,6 +242,7 @@ ${youtubeEnabled && youtubeConfig.apiKey ? `### YouTube推荐格式：
     const requestBody: any = {
       model: requestModel,
       messages: chatMessages,
+      stream: true, // 启用流式输出
     };
     
     // 推理模型不支持某些参数
@@ -259,7 +260,7 @@ ${youtubeEnabled && youtubeConfig.apiKey ? `### YouTube推荐格式：
       console.log(`使用标准模型 ${requestModel}，max_tokens: ${tokenLimit}`);
     }
 
-    // 调用AI API - 添加超时控制
+    // 调用AI API - 流式请求
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 60000); // 60秒超时
     
@@ -319,13 +320,127 @@ ${youtubeEnabled && youtubeConfig.apiKey ? `### YouTube推荐格式：
         errorMessage = 'AI服务器错误，请稍后重试';
       }
       
-      return NextResponse.json({ 
+      return NextResponse.json({
         error: errorMessage,
         details: errorDetails,
         status: openaiResponse.status
       }, { status: 500 });
     }
 
+    // 处理流式响应
+    const encoder = new TextEncoder();
+    const decoder = new TextDecoder();
+    
+    const stream = new ReadableStream({
+      async start(controller) {
+        const reader = openaiResponse.body?.getReader();
+        if (!reader) {
+          controller.close();
+          return;
+        }
+
+        let buffer = '';
+        let fullContent = '';
+        
+        try {
+          while (true) {
+            const { done, value } = await reader.read();
+            
+            if (done) {
+              // 流结束，发送最终处理结果
+              if (fullContent) {
+                // 处理视频链接解析
+                if (hasVideoLinks) {
+                  try {
+                    const parsedVideos = await handleVideoLinkParsing(videoLinks);
+                    const finalData = {
+                      type: 'video_links',
+                      data: parsedVideos
+                    };
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(finalData)}\n\n`));
+                  } catch (error) {
+                    console.error('视频链接解析失败:', error);
+                  }
+                }
+                
+                // 检测YouTube推荐
+                const isYouTubeRecommendation = youtubeEnabled && youtubeConfig.apiKey &&
+                  fullContent.includes('【') && fullContent.includes('】');
+                
+                if (isYouTubeRecommendation) {
+                  try {
+                    const searchKeywords = extractYouTubeSearchKeywords(fullContent);
+                    const youtubeVideos = await searchYouTubeVideos(searchKeywords, youtubeConfig);
+                    const finalData = {
+                      type: 'youtube_videos',
+                      data: youtubeVideos
+                    };
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(finalData)}\n\n`));
+                  } catch (error) {
+                    console.error('YouTube推荐失败:', error);
+                  }
+                } else {
+                  // 提取影视推荐
+                  const recommendations = extractRecommendations(fullContent);
+                  if (recommendations.length > 0) {
+                    const finalData = {
+                      type: 'recommendations',
+                      data: recommendations
+                    };
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify(finalData)}\n\n`));
+                  }
+                }
+              }
+              
+              controller.enqueue(encoder.encode('data: [DONE]\n\n'));
+              controller.close();
+              break;
+            }
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split('\n');
+            buffer = lines.pop() || '';
+
+            for (const line of lines) {
+              const trimmedLine = line.trim();
+              if (!trimmedLine || trimmedLine === 'data: [DONE]') continue;
+              
+              if (trimmedLine.startsWith('data: ')) {
+                const jsonStr = trimmedLine.slice(6);
+                try {
+                  const parsed = JSON.parse(jsonStr);
+                  const content = parsed.choices?.[0]?.delta?.content;
+                  
+                  if (content) {
+                    fullContent += content;
+                    // 转发内容块
+                    controller.enqueue(encoder.encode(`data: ${JSON.stringify({
+                      type: 'content',
+                      content: content
+                    })}\n\n`));
+                  }
+                } catch (e) {
+                  console.error('解析SSE数据失败:', e);
+                }
+              }
+            }
+          }
+        } catch (error) {
+          console.error('流处理错误:', error);
+          controller.error(error);
+        }
+      }
+    });
+
+    return new Response(stream, {
+      headers: {
+        'Content-Type': 'text/event-stream',
+        'Cache-Control': 'no-cache',
+        'Connection': 'keep-alive',
+      },
+    });
+
+    /* 以下代码已被流式处理替代，保留注释以供参考
     const aiResult = await openaiResponse.json();
     
     // 检查AI响应的完整性
@@ -513,6 +628,7 @@ ${youtubeEnabled && youtubeConfig.apiKey ? `### YouTube推荐格式：
     }
 
     return NextResponse.json(response);
+    */
 
   } catch (error) {
     console.error('AI推荐API错误:', error);
