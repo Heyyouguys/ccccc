@@ -1,60 +1,56 @@
+name: Cleanup Old Versions
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 2 * * *'  # 每天凌晨2点运行
+
+jobs:
+  cleanup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cleanup old workflow runs
+        uses: Mattraks/delete-workflow-runs@main
+        with:
+          token: ${{ secrets.PAT }}
+          repository: ${{ github.repository }}
+          retain_days: 0
+          keep_minimum_runs: 1
+
       - name: Cleanup old package versions
         env:
-          GITHUB_TOKEN: ${{ secrets.PAT }}
-          PACKAGE_NAME: ${{ github.event.repository.name }}
+          GH_TOKEN: ${{ secrets.PAT }}
           OWNER: ${{ github.repository_owner }}
+          PACKAGE: ${{ github.event.repository.name }}
         run: |
-          echo "Repository: $OWNER/$PACKAGE_NAME"
-          
-          # 尝试获取包版本（先试 user 路径，再试 org 路径）
-          echo "Fetching package versions..."
+          echo "Fetching package versions for $OWNER/$PACKAGE"
           
           # 尝试 user 路径
-          VERSIONS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/users/$OWNER/packages/container/$PACKAGE_NAME/versions" 2>/dev/null)
+          VERSIONS=$(gh api /users/$OWNER/packages/container/$PACKAGE/versions --jq 'sort_by(.created_at) | reverse' 2>/dev/null || echo "[]")
           
           # 如果失败，尝试 org 路径
-          if [ -z "$VERSIONS" ] || echo "$VERSIONS" | grep -q "Not Found"; then
+          if [ "$VERSIONS" = "[]" ]; then
             echo "Trying org path..."
-            VERSIONS=$(curl -s -H "Authorization: token $GITHUB_TOKEN" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/orgs/$OWNER/packages/container/$PACKAGE_NAME/versions")
-            API_PATH="orgs"
+            VERSIONS=$(gh api /orgs/$OWNER/packages/container/$PACKAGE/versions --jq 'sort_by(.created_at) | reverse' 2>/dev/null || echo "[]")
+            API_BASE="/orgs/$OWNER"
           else
-            API_PATH="users"
+            API_BASE="/users/$OWNER"
           fi
           
-          echo "Using API path: $API_PATH"
-          
-          # 获取版本总数
-          TOTAL=$(echo "$VERSIONS" | jq '. | length')
+          TOTAL=$(echo "$VERSIONS" | jq 'length')
           echo "Found $TOTAL version(s)"
           
           if [ "$TOTAL" -le 1 ]; then
-            echo "Only 1 or 0 versions exist, nothing to delete"
+            echo "Nothing to delete"
             exit 0
           fi
           
-          # 获取最新版本 ID（保留它）
-          LATEST_ID=$(echo "$VERSIONS" | jq -r 'sort_by(.created_at) | reverse | .[0].id')
-          echo "Keeping latest version: $LATEST_ID"
+          LATEST=$(echo "$VERSIONS" | jq -r '.[0].id')
+          echo "Keeping latest: $LATEST"
           
-          # 删除所有旧版本
-          echo "Deleting old versions..."
-          echo "$VERSIONS" | jq -r 'sort_by(.created_at) | reverse | .[1:] | .[].id' | while read -r VERSION_ID; do
-            echo "  Deleting version: $VERSION_ID"
-            
-            STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
-              -H "Authorization: token $GITHUB_TOKEN" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/$API_PATH/$OWNER/packages/container/$PACKAGE_NAME/versions/$VERSION_ID")
-            
-            if [ "$STATUS" = "204" ]; then
-              echo "    ✓ Deleted successfully"
-            else
-              echo "    ✗ Failed (HTTP $STATUS)"
-            fi
+          echo "$VERSIONS" | jq -r '.[1:] | .[].id' | while read id; do
+            echo "Deleting version $id..."
+            gh api -X DELETE "$API_BASE/packages/container/$PACKAGE/versions/$id" && echo "  ✓ Deleted" || echo "  ✗ Failed"
           done
           
           echo "Cleanup completed!"
