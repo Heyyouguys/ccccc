@@ -3,9 +3,10 @@
 'use client';
 
 import { AlertCircle, CheckCircle } from 'lucide-react';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 
 import { AdminConfig } from '@/lib/admin.types';
+import { MODEL_EXAMPLES, API_URL_EXAMPLES } from '@/lib/ai-recommend-constants';
 
 interface AIRecommendConfigProps {
   config: AdminConfig | null;
@@ -30,23 +31,6 @@ const AIRecommendConfig = ({ config, refreshConfig }: AIRecommendConfigProps) =>
     maxTokens: 3000,
     streamMode: true
   });
-
-  // 常用模型参考（建议使用支持联网搜索的模型）
-  const MODEL_EXAMPLES = [
-    'gpt-5 (OpenAI)',
-    'o3-mini (OpenAI)',
-    'claude-4-opus (Anthropic)',
-    'claude-4-sonnet (Anthropic)', 
-    'gemini-2.5-flash (Google)',
-    'gemini-2.5-pro (Google)',
-    'deepseek-reasoner (DeepSeek)',
-    'deepseek-chat (DeepSeek)',
-    'deepseek-coder (DeepSeek)',
-    'qwen3-max (阿里云)',
-    'glm-4-plus (智谱AI)',
-    'llama-4 (Meta)',
-    'grok-4 (xAI)'
-  ];
 
   // 从config加载设置
   useEffect(() => {
@@ -205,9 +189,12 @@ const AIRecommendConfig = ({ config, refreshConfig }: AIRecommendConfigProps) =>
     }
   };
 
-  // 过滤模型列表
-  const filteredModels = availableModels.filter((model: string) =>
-    model.toLowerCase().includes(modelSearchQuery.toLowerCase())
+  // 过滤模型列表 - 使用 useMemo 优化性能
+  const filteredModels = useMemo(() =>
+    availableModels.filter((model: string) =>
+      model.toLowerCase().includes(modelSearchQuery.toLowerCase())
+    ),
+    [availableModels, modelSearchQuery]
   );
 
   // 选择模型
@@ -316,16 +303,7 @@ const AIRecommendConfig = ({ config, refreshConfig }: AIRecommendConfigProps) =>
                       📝 常见API地址示例 (点击展开)
                     </summary>
                     <div className='mt-2 space-y-1 pl-4 border-l-2 border-gray-200 dark:border-gray-700'>
-                      {[
-                        { name: 'OpenAI', url: 'https://api.openai.com/v1' },
-                        { name: 'DeepSeek', url: 'https://api.deepseek.com/v1' },
-                        { name: '硅基流动', url: 'https://api.siliconflow.cn/v1' },
-                        { name: '月之暗面', url: 'https://api.moonshot.cn/v1' },
-                        { name: '智谱AI', url: 'https://open.bigmodel.cn/api/paas/v4' },
-                        { name: '通义千问', url: 'https://dashscope.aliyuncs.com/compatible-mode/v1' },
-                        { name: '百度文心', url: 'https://aip.baidubce.com/rpc/2.0/ai_custom/v1' },
-                        { name: '自部署', url: 'http://localhost:11434/v1' }
-                      ].map((provider) => (
+                      {API_URL_EXAMPLES.map((provider) => (
                         <div key={provider.name} className='flex items-center justify-between group'>
                           <span>• {provider.name}: <code>{provider.url}</code></span>
                           <button
