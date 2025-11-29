@@ -1,3 +1,32 @@
+name: Retain Latest Package Version
+
+on:
+  schedule:
+    - cron: '0 0 * * *'  # 每天午夜运行
+  workflow_dispatch:
+    inputs:
+      package_type:
+        description: 'Package type (e.g., container, npm, maven)'
+        required: true
+        default: 'container'
+
+jobs:
+  cleanup-packages:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v2
+
+    - name: Set up Python
+      uses: actions/setup-python@v2
+      with:
+        python-version: '3.x'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests
+
     - name: Retain latest package version
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -24,7 +53,7 @@
 
         response = requests.get(api_url, headers=headers)
         print(f"API Response Status Code: {response.status_code}")
-        print(f"API Response Content: {response.text[:500]}...")  # 打印前500个字符
+        print(f"API Response Content: {response.text[:500]}...")
 
         if response.status_code != 200:
             print(f"Error: API request failed with status code {response.status_code}")
@@ -39,4 +68,35 @@
             exit(1)
 
         if not isinstance(versions, list):
-            print(f"Error: Unexpected response format. Expected a lis
+            print(f"Error: Unexpected response format. Expected a list, got {type(versions)}")
+            print(f"Response content: {versions}")
+            exit(1)
+
+        if not versions:
+            print("No package versions found.")
+            exit(0)
+
+        try:
+            sorted_versions = sorted(versions, key=lambda x: datetime.strptime(x.get('created_at', '1970-01-01T00:00:00Z'), "%Y-%m-%dT%H:%M:%SZ"), reverse=True)
+        except Exception as e:
+            print(f"Error sorting versions: {e}")
+            print(f"Versions data: {versions}")
+            exit(1)
+
+        latest_version = sorted_versions[0]
+        print(f"Keeping latest version: {latest_version.get('id', 'Unknown ID')}")
+
+        for version in sorted_versions[1:]:
+            version_id = version.get('id')
+            if version_id:
+                delete_url = f"{api_url}/{version_id}"
+                delete_response = requests.delete(delete_url, headers=headers)
+                if delete_response.status_code == 204:
+                    print(f"Successfully deleted package version {version_id}")
+                else:
+                    print(f"Failed to delete package version {version_id}. Status code: {delete_response.status_code}")
+            else:
+                print(f"Warning: Version without ID found: {version}")
+
+        print("Cleanup process completed.")
+        EOF
