@@ -3,55 +3,76 @@ name: Cleanup Untagged Versions
 on:
   workflow_dispatch:
   schedule:
-    - cron: '0 2 * * *'
+    - cron: '0 2 * * *'   # 每天 02:00 UTC
 
 jobs:
   cleanup:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read         # 读取代码
+      packages: write        # 读取/写入包
+      # 注意：即使这里写 write，也不够删除，需要 PAT
+
     steps:
-      - name: Delete all untagged package versions
+      # 1️⃣ 让 gh 使用 PAT
+      - name: Authenticate gh
         env:
           GH_TOKEN: ${{ secrets.PAT }}
+        run: |
+          echo "$GH_TOKEN" | gh auth login --with-token
+
+      # 2️⃣ 主逻辑
+      - name: Delete all untagged package versions
+        env:
           OWNER: ${{ github.repository_owner }}
           PACKAGE: ${{ github.event.repository.name }}
         run: |
-          echo "Cleaning up untagged versions for $OWNER/$PACKAGE"
-          
-          # 尝试 user 路径
-          VERSIONS=$(gh api /users/$OWNER/packages/container/$PACKAGE/versions --paginate 2>/dev/null || echo "[]")
-          
-          # 如果失败，尝试 org 路径
+          echo "=== Start cleanup for $OWNER/$PACKAGE ==="
+
+          # ---- 取版本（先 user，后 org）----
+          get_versions() {
+            local base=$1   # users 或 orgs
+            gh api "/$base/$OWNER/packages/container/$PACKAGE/versions" \
+              --paginate -q '[.[]]' 2>/dev/null || echo "[]"
+          }
+
+          VERSIONS=$(get_versions users)
+          API_BASE="/users/$OWNER"
+
           if [ "$VERSIONS" = "[]" ]; then
-            echo "Trying org path..."
-            VERSIONS=$(gh api /orgs/$OWNER/packages/container/$PACKAGE/versions --paginate 2>/dev/null || echo "[]")
+            echo "User path empty → try org path"
+            VERSIONS=$(get_versions orgs)
             API_BASE="/orgs/$OWNER"
-          else
-            API_BASE="/users/$OWNER"
           fi
-          
-          # 统计总数
+
+          # ---- 检查返回是否有效 ----
+          if ! echo "$VERSIONS" | jq . >/dev/null 2>&1; then
+            echo "❌ Failed to parse JSON, abort"
+            exit 1
+          fi
+
           TOTAL=$(echo "$VERSIONS" | jq 'length')
           echo "Found $TOTAL total version(s)"
-          
-          # 找出所有 untagged 版本（tags 数组为空的）
-          UNTAGGED=$(echo "$VERSIONS" | jq -r '.[] | select(.metadata.container.tags | length == 0) | .id')
+
+          # ---- 过滤出 untagged ----
+          UNTAGGED=$(echo "$VERSIONS" |
+            jq -r '.[] |
+              select(.metadata?.container?.tags | length == 0) |
+              .id')
           UNTAGGED_COUNT=$(echo "$UNTAGGED" | grep -c . || echo 0)
-          
-          echo "Found $UNTAGGED_COUNT untagged version(s) to delete"
-          
+          echo "🗑️  $UNTAGGED_COUNT untagged version(s) will be removed"
+
           if [ "$UNTAGGED_COUNT" -eq 0 ]; then
-            echo "No untagged versions to delete"
+            echo "Nothing to delete – all versions have tags"
             exit 0
           fi
-          
-          # 删除所有 untagged 版本
+
+          # ---- 删除 ----
           echo "$UNTAGGED" | while read -r id; do
-            if [ -n "$id" ]; then
-              echo "Deleting untagged version: $id"
-              gh api -X DELETE "$API_BASE/packages/container/$PACKAGE/versions/$id" \
-                && echo "  ✓ Deleted" \
-                || echo "  ✗ Failed"
-            fi
+            echo "Deleting version $id ..."
+            gh api -X DELETE "$API_BASE/packages/container/$PACKAGE/versions/$id" \
+              && echo "  ✅ deleted" \
+              || echo "  ❌ delete failed (status $?)"
           done
-          
-          echo "Cleanup completed!"
+
+          echo "=== Cleanup finished ==="
