@@ -198,8 +198,10 @@ export default function AIRecommendModal({ isOpen, onClose }: AIRecommendModalPr
       let videoLinks: any[] = [];
       let messageType = 'normal';
 
-      while (true) {
+      let isDone = false;
+      while (!isDone) {
         const { done, value } = await reader.read();
+        isDone = done;
         
         if (done) break;
 

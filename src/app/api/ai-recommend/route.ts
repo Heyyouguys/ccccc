@@ -264,7 +264,7 @@ ${youtubeEnabled && youtubeConfig.apiKey ? `### YouTube推荐格式：
     const controller = new AbortController();
     const timeoutId = setTimeout(() => controller.abort(), 60000); // 60秒超时
     
-    let openaiResponse;
+    let openaiResponse: Response;
     try {
       openaiResponse = await fetch(aiConfig.apiUrl.endsWith('/chat/completions')
         ? aiConfig.apiUrl
@@ -343,8 +343,10 @@ ${youtubeEnabled && youtubeConfig.apiKey ? `### YouTube推荐格式：
         let fullContent = '';
         
         try {
-          while (true) {
+          let isDone = false;
+          while (!isDone) {
             const { done, value } = await reader.read();
+            isDone = done;
             
             if (done) {
               // 流结束，发送最终处理结果
