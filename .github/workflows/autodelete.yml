@@ -1,6 +1,6 @@
-name: Cleanup lunatv – keep only latest version
+name: Cleanup lunatv – keep recent versions
 
-# 仅手动触发
+# 只需要手动触发
 on:
   workflow_dispatch:
 
@@ -8,33 +8,45 @@ jobs:
   cleanup:
     runs-on: ubuntu-latest
     permissions:
-      contents: read          # 只读代码即可
-      packages: read          # 读取包信息（实际删除依赖 PAT）
+      contents: read          # 只读代码
+      packages: read          # 读取包信息（实际删除靠 PAT）
 
     steps:
       # -------------------------------------------------
-      # 1️⃣ 使用 PAT 登录 gh（必须有 delete:packages 权限）
+      # 1️⃣ 用拥有 delete:packages 权限的 PAT 登录 gh
       - name: Authenticate gh with PAT
         env:
-          GH_TOKEN: ${{ secrets.PAT }}
+          GH_TOKEN: ${{ secrets.PAT }}   # <‑‑ 必须是带 delete:packages 的 PAT
         run: |
           echo "$GH_TOKEN" | gh auth login --with-token
 
       # -------------------------------------------------
-      # 2️⃣ 设定常量（package 名称）
+      # 2️⃣ 配置常量
       - name: Set variables
         id: vars
         run: |
-          echo "PACKAGE=lunatv" >> $GITHUB_OUTPUT   # 目标 package 名称（区分大小写）
+          # ---- 目标 package 名称（区分大小写）----
+          echo "PACKAGE=lunatv" >> $GITHUB_OUTPUT
+
+          # ---- 保留阈值：这里设为 10 分钟（600 秒）----
+          # 若想改成天数，只需要把下面的 -d 参数改成 '-10 days'
+          echo "CUT_OFF=$(date -d '-10 minutes' +%s)" >> $GITHUB_OUTPUT
+
+          # ---- 当前时间（用于调试）----
+          echo "NOW=$(date +%s)" >> $GITHUB_OUTPUT
 
       # -------------------------------------------------
-      # 3️⃣ 主体逻辑：获取全部版本 → 找出最新 version → 删除其余
-      - name: Delete all but the newest version
+      # 3️⃣ 主体：获取所有版本 → 过滤（仅保留最近） → 删除其余
+      - name: Delete old untagged/old versions
         env:
           OWNER: ${{ github.repository_owner }}
           PACKAGE: ${{ steps.vars.outputs.PACKAGE }}
+          CUT_OFF: ${{ steps.vars.outputs.CUT_OFF }}
+          NOW: ${{ steps.vars.outputs.NOW }}
         run: |
-          echo "=== Starting cleanup for $OWNER/$PACKAGE ==="
+          echo "=== Cleanup for $OWNER/$PACKAGE ==="
+          echo "Current timestamp (NOW)      : $NOW"
+          echo "Cut‑off timestamp (keep ≥)    : $CUT_OFF  (≈ $(date -d @$CUT_OFF))"
 
           # ---------- ① 统一函数获取所有版本 ----------
           get_versions() {
@@ -49,12 +61,12 @@ jobs:
 
           # ---------- ③ 若为空，改为组织路径 ----------
           if [ "$VERSIONS" = "[]" ]; then
-            echo "User path returned empty – trying organization path"
+            echo "User path empty → trying organization path"
             VERSIONS=$(get_versions orgs)
             API_BASE="/orgs/$OWNER"
           fi
 
-          # ---------- ④ 检查返回的 JSON 是否有效 ----------
+          # ---------- ④ 检查返回是否合法 ----------
           if ! echo "$VERSIONS" | jq . >/dev/null 2>&1; then
             echo "❌ Failed to parse JSON from GitHub API – abort"
             exit 1
@@ -68,24 +80,25 @@ jobs:
             exit 0
           fi
 
-          # ---------- ⑤ 找出最新的 version ----------
-          # 这里使用 created_at（ISO8601），取最大时间即为最新
-          LATEST_ID=$(echo "$VERSIONS" |
-            jq -r 'sort_by(.created_at) | last | .id')
-          echo "Latest version ID (to keep): $LATEST_ID"
-
-          # ---------- ⑥ 过滤出所有 **非最新** 的 version IDs ----------
+          # ---------- ⑤ 过滤出 **需要删除** 的版本 ----------
+          # 条件：
+          #   1. created_at 早于 CUT_OFF（即太旧）
+          #   2. （可选）如果你只想保留 *未打 tag* 的最新版本，可再加上 tags 过滤；
+          #      这里我们只依据时间，不管有没有 tag。
           TO_DELETE=$(echo "$VERSIONS" |
-            jq -r --arg keep "$LATEST_ID" '.[] | select(.id != $keep) | .id')
+            jq -r --argjson cutoff "$CUT_OFF" '
+              .[] |
+              select((.created_at | fromdate) < $cutoff) |
+              .id')
           DELETE_COUNT=$(echo "$TO_DELETE" | grep -c . || echo 0)
-          echo "🗑️  $DELETE_COUNT version(s) will be removed (all except the newest)"
+          echo "🗑️  $DELETE_COUNT version(s) older than the cut‑off will be removed"
 
           if [ "$DELETE_COUNT" -eq 0 ]; then
-            echo "Nothing to delete"
+            echo "No old versions to delete"
             exit 0
           fi
 
-          # ---------- ⑦ 删除 ----------
+          # ---------- ⑥ 实际删除 ----------
           echo "$TO_DELETE" | while read -r id; do
             echo "Deleting version $id ..."
             gh api -X DELETE "$API_BASE/packages/container/$PACKAGE/versions/$id" \
