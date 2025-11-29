@@ -27,7 +27,8 @@ const AIRecommendConfig = ({ config, refreshConfig }: AIRecommendConfigProps) =>
     apiKey: '',
     model: 'gpt-3.5-turbo',
     temperature: 0.7,
-    maxTokens: 3000
+    maxTokens: 3000,
+    streamMode: true
   });
 
   // 常用模型参考（建议使用支持联网搜索的模型）
@@ -56,7 +57,8 @@ const AIRecommendConfig = ({ config, refreshConfig }: AIRecommendConfigProps) =>
         apiKey: config.AIRecommendConfig.apiKey || '',
         model: config.AIRecommendConfig.model || 'gpt-3.5-turbo',
         temperature: config.AIRecommendConfig.temperature ?? 0.7,
-        maxTokens: config.AIRecommendConfig.maxTokens ?? 3000
+        maxTokens: config.AIRecommendConfig.maxTokens ?? 3000,
+        streamMode: config.AIRecommendConfig.streamMode ?? true
       });
     }
   }, [config]);
@@ -519,6 +521,33 @@ const AIRecommendConfig = ({ config, refreshConfig }: AIRecommendConfigProps) =>
                   </div>
                 </details>
               </div>
+            </div>
+
+            {/* 流式输出开关 */}
+            <div className='p-4 bg-gray-50 dark:bg-gray-800/50 rounded-lg border border-gray-200 dark:border-gray-700'>
+              <label className='flex items-center cursor-pointer'>
+                <input
+                  type='checkbox'
+                  className='sr-only'
+                  checked={aiSettings.streamMode}
+                  onChange={(e) => setAiSettings(prev => ({ ...prev, streamMode: e.target.checked }))}
+                />
+                <div className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${
+                  aiSettings.streamMode
+                    ? 'bg-blue-600'
+                    : 'bg-gray-200 dark:bg-gray-600'
+                }`}>
+                  <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                    aiSettings.streamMode ? 'translate-x-6' : 'translate-x-1'
+                  }`} />
+                </div>
+                <span className='ml-3 text-sm font-medium text-gray-900 dark:text-gray-100'>
+                  启用流式输出
+                </span>
+              </label>
+              <p className='mt-2 text-xs text-gray-500 dark:text-gray-400'>
+                <span className='text-green-600 dark:text-green-400'>✅ 推荐开启：</span>流式输出可以让用户立即看到AI的回复过程，提升体验感。关闭后将等待AI完整回复后一次性显示。
+              </p>
             </div>
 
             {/* 高级参数 */}

@@ -134,7 +134,7 @@ export default function AIRecommendModal({ isOpen, onClose }: AIRecommendModalPr
     }
   };
 
-  // 发送消息 - 支持流式接收
+  // 发送消息 - 支持流式和非流式两种模式
   const sendMessage = async (content: string) => {
     if (!content.trim() || isLoading) return;
 
@@ -149,25 +149,13 @@ export default function AIRecommendModal({ isOpen, onClose }: AIRecommendModalPr
     setIsLoading(true);
     setError(null);
 
-    // 创建一个临时的助手消息用于流式更新
-    const tempAssistantMessage: ExtendedAIMessage = {
-      role: 'assistant',
-      content: '',
-      timestamp: new Date().toISOString(),
-      recommendations: [],
-      youtubeVideos: [],
-      videoLinks: [],
-      type: 'normal',
-    };
-
     const updatedMessages = [...messages, userMessage];
-    setMessages([...updatedMessages, tempAssistantMessage]);
 
     try {
       // 智能上下文管理：只发送最近8条消息（4轮对话）
       const conversationHistory = updatedMessages.slice(-8);
       
-      // 使用流式API
+      // 调用AI推荐API
       const response = await fetch('/api/ai-recommend', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -184,84 +172,119 @@ export default function AIRecommendModal({ isOpen, onClose }: AIRecommendModalPr
         throw new Error(JSON.stringify(errorData));
       }
 
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-      
-      if (!reader) {
-        throw new Error('无法读取响应流');
-      }
+      // 检查响应的 Content-Type 来判断是流式还是非流式
+      const contentType = response.headers.get('content-type');
+      const isStreamResponse = contentType?.includes('text/event-stream');
 
-      let buffer = '';
-      let fullContent = '';
-      let recommendations: MovieRecommendation[] = [];
-      let youtubeVideos: any[] = [];
-      let videoLinks: any[] = [];
-      let messageType = 'normal';
+      if (isStreamResponse) {
+        // 流式模式处理
+        // 创建一个临时的助手消息用于流式更新
+        const tempAssistantMessage: ExtendedAIMessage = {
+          role: 'assistant',
+          content: '',
+          timestamp: new Date().toISOString(),
+          recommendations: [],
+          youtubeVideos: [],
+          videoLinks: [],
+          type: 'normal',
+        };
+        setMessages([...updatedMessages, tempAssistantMessage]);
 
-      let isDone = false;
-      while (!isDone) {
-        const { done, value } = await reader.read();
-        isDone = done;
+        const reader = response.body?.getReader();
+        const decoder = new TextDecoder();
         
-        if (done) break;
+        if (!reader) {
+          throw new Error('无法读取响应流');
+        }
 
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+        let buffer = '';
+        let fullContent = '';
+        let recommendations: MovieRecommendation[] = [];
+        let youtubeVideos: any[] = [];
+        let videoLinks: any[] = [];
+        let messageType = 'normal';
 
-        for (const line of lines) {
-          const trimmedLine = line.trim();
-          if (!trimmedLine || !trimmedLine.startsWith('data: ')) continue;
+        let isDone = false;
+        while (!isDone) {
+          const { done, value } = await reader.read();
+          isDone = done;
           
-          const data = trimmedLine.slice(6);
-          if (data === '[DONE]') continue;
+          if (done) break;
 
-          try {
-            const parsed = JSON.parse(data);
+          buffer += decoder.decode(value, { stream: true });
+          const lines = buffer.split('\n');
+          buffer = lines.pop() || '';
+
+          for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (!trimmedLine || !trimmedLine.startsWith('data: ')) continue;
             
-            if (parsed.type === 'content' && parsed.content) {
-              fullContent += parsed.content;
+            const data = trimmedLine.slice(6);
+            if (data === '[DONE]') continue;
+
+            try {
+              const parsed = JSON.parse(data);
               
-              // 实时更新消息内容
-              setMessages(prev => {
-                const newMessages = [...prev];
-                const lastMessage = newMessages[newMessages.length - 1];
-                if (lastMessage.role === 'assistant') {
-                  lastMessage.content = fullContent;
-                }
-                return newMessages;
-              });
-              
-              // 自动滚动到底部
-              scrollToBottom();
-            } else if (parsed.type === 'recommendations' && parsed.data) {
-              recommendations = parsed.data;
-            } else if (parsed.type === 'youtube_videos' && parsed.data) {
-              youtubeVideos = parsed.data;
-              messageType = 'youtube_recommend';
-            } else if (parsed.type === 'video_links' && parsed.data) {
-              videoLinks = parsed.data;
-              messageType = 'video_link_parse';
+              if (parsed.type === 'content' && parsed.content) {
+                fullContent += parsed.content;
+                
+                // 实时更新消息内容
+                setMessages(prev => {
+                  const newMessages = [...prev];
+                  const lastMessage = newMessages[newMessages.length - 1];
+                  if (lastMessage.role === 'assistant') {
+                    lastMessage.content = fullContent;
+                  }
+                  return newMessages;
+                });
+                
+                // 自动滚动到底部
+                scrollToBottom();
+              } else if (parsed.type === 'recommendations' && parsed.data) {
+                recommendations = parsed.data;
+              } else if (parsed.type === 'youtube_videos' && parsed.data) {
+                youtubeVideos = parsed.data;
+                messageType = 'youtube_recommend';
+              } else if (parsed.type === 'video_links' && parsed.data) {
+                videoLinks = parsed.data;
+                messageType = 'video_link_parse';
+              }
+            } catch (e) {
+              console.error('解析SSE数据失败:', e);
             }
-          } catch (e) {
-            console.error('解析SSE数据失败:', e);
           }
         }
-      }
 
-      // 流结束后更新完整的消息
-      setMessages(prev => {
-        const newMessages = [...prev];
-        const lastMessage = newMessages[newMessages.length - 1];
-        if (lastMessage.role === 'assistant') {
-          lastMessage.content = fullContent;
-          lastMessage.recommendations = recommendations;
-          lastMessage.youtubeVideos = youtubeVideos;
-          lastMessage.videoLinks = videoLinks;
-          lastMessage.type = messageType;
-        }
-        return newMessages;
-      });
+        // 流结束后更新完整的消息
+        setMessages(prev => {
+          const newMessages = [...prev];
+          const lastMessage = newMessages[newMessages.length - 1];
+          if (lastMessage.role === 'assistant') {
+            lastMessage.content = fullContent;
+            lastMessage.recommendations = recommendations;
+            lastMessage.youtubeVideos = youtubeVideos;
+            lastMessage.videoLinks = videoLinks;
+            lastMessage.type = messageType;
+          }
+          return newMessages;
+        });
+      } else {
+        // 非流式模式处理
+        const data = await response.json();
+        
+        const assistantMessage: ExtendedAIMessage = {
+          role: 'assistant',
+          content: data.choices[0].message.content,
+          timestamp: new Date().toISOString(),
+          recommendations: data.recommendations || [],
+          youtubeVideos: data.youtubeVideos || [],
+          videoLinks: data.videoLinks || [],
+          type: data.type || 'normal',
+        };
+
+        setMessages([...updatedMessages, assistantMessage]);
+        scrollToBottom();
+      }
 
     } catch (error) {
       console.error('AI推荐请求失败:', error);

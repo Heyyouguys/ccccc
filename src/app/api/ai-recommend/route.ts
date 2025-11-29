@@ -17,6 +17,7 @@ interface ChatRequest {
   temperature?: number;
   max_tokens?: number;
   max_completion_tokens?: number;
+  streamMode?: boolean;
 }
 
 export async function POST(request: NextRequest) {
@@ -71,7 +72,7 @@ export async function POST(request: NextRequest) {
       }, { status: 500 });
     }
 
-    const { messages, model, temperature, max_tokens, max_completion_tokens } = await request.json() as ChatRequest;
+    const { messages, model, temperature, max_tokens, max_completion_tokens, streamMode } = await request.json() as ChatRequest;
 
     // 验证请求格式
     if (!messages || !Array.isArray(messages) || messages.length === 0) {
@@ -239,10 +240,13 @@ ${youtubeEnabled && youtubeConfig.apiKey ? `### YouTube推荐格式：
       }
     }
     
+    // 根据配置或请求参数决定是否使用流式输出
+    const useStream = streamMode ?? aiConfig.streamMode ?? true;
+    
     const requestBody: any = {
       model: requestModel,
       messages: chatMessages,
-      stream: true, // 启用流式输出
+      stream: useStream, // 根据配置启用或禁用流式输出
     };
     
     // 推理模型不支持某些参数
@@ -325,6 +329,88 @@ ${youtubeEnabled && youtubeConfig.apiKey ? `### YouTube推荐格式：
         details: errorDetails,
         status: openaiResponse.status
       }, { status: 500 });
+    }
+
+    // 如果不使用流式输出，则使用传统方式处理
+    if (!useStream) {
+      const aiResult = await openaiResponse.json();
+      
+      // 检查AI响应的完整性
+      if (!aiResult.choices || aiResult.choices.length === 0 || !aiResult.choices[0].message) {
+        console.error('AI响应格式异常:', aiResult);
+        return NextResponse.json({
+          error: 'AI服务响应格式异常，请稍后重试',
+          details: `响应结构异常: ${JSON.stringify(aiResult).substring(0, 200)}...`
+        }, { status: 500 });
+      }
+      
+      const aiContent = aiResult.choices[0].message.content;
+      
+      // 检查内容是否为空
+      if (!aiContent || aiContent.trim() === '') {
+        console.error('AI返回空内容');
+        return NextResponse.json({
+          error: 'AI返回了空回复',
+          details: '建议：请尝试更详细地描述您想要的影视类型'
+        }, { status: 500 });
+      }
+      
+      // 处理视频链接解析
+      if (hasVideoLinks) {
+        try {
+          const parsedVideos = await handleVideoLinkParsing(videoLinks);
+          
+          return NextResponse.json({
+            id: aiResult.id || `chatcmpl-${Date.now()}`,
+            object: 'chat.completion',
+            created: aiResult.created || Math.floor(Date.now() / 1000),
+            model: aiResult.model || requestBody.model,
+            choices: aiResult.choices,
+            usage: aiResult.usage,
+            videoLinks: parsedVideos,
+            type: 'video_link_parse'
+          });
+        } catch (error) {
+          console.error('视频链接解析失败:', error);
+        }
+      }
+      
+      // 检测是否为YouTube视频推荐
+      const isYouTubeRecommendation = youtubeEnabled && youtubeConfig.apiKey &&
+        aiContent.includes('【') && aiContent.includes('】');
+      
+      if (isYouTubeRecommendation) {
+        try {
+          const searchKeywords = extractYouTubeSearchKeywords(aiContent);
+          const youtubeVideos = await searchYouTubeVideos(searchKeywords, youtubeConfig);
+          
+          return NextResponse.json({
+            id: aiResult.id || `chatcmpl-${Date.now()}`,
+            object: 'chat.completion',
+            created: aiResult.created || Math.floor(Date.now() / 1000),
+            model: aiResult.model || requestBody.model,
+            choices: aiResult.choices,
+            usage: aiResult.usage,
+            youtubeVideos,
+            type: 'youtube_recommend'
+          });
+        } catch (error) {
+          console.error('YouTube推荐失败:', error);
+        }
+      }
+      
+      // 提取结构化推荐信息
+      const recommendations = extractRecommendations(aiContent);
+      
+      return NextResponse.json({
+        id: aiResult.id || `chatcmpl-${Date.now()}`,
+        object: 'chat.completion',
+        created: aiResult.created || Math.floor(Date.now() / 1000),
+        model: aiResult.model || requestBody.model,
+        choices: aiResult.choices,
+        usage: aiResult.usage,
+        recommendations
+      });
     }
 
     // 处理流式响应

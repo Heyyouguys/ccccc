@@ -85,6 +85,7 @@ export interface AdminConfig {
     model: string;                       // 模型名称
     temperature: number;                 // 温度参数 0-2
     maxTokens: number;                   // 最大token数
+    streamMode?: boolean;                // 是否启用流式输出
   };
   YouTubeConfig?: {
     enabled: boolean;                    // 是否启用YouTube搜索功能
