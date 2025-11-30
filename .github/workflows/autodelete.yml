@@ -1,58 +1,24 @@
-name: Retain Latest Package Version
+name: Remove old artifacts
+
 on:
   schedule:
-    - cron: '0 0 * * *'
-  workflow_dispatch:
+    # Every day at 1am
+    - cron: '0 1 * * *'
+
 jobs:
-  cleanup-packages:
+  remove-old-artifacts:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    # For private repos
+    permissions:
+      actions: write
+
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v2
-      - name: Set up Python
-        uses: actions/setup-python@v2
-        with:
-          python-version: '3.x'
-      - name: Install dependencies
-        run: pip install requests
-      - name: Retain latest package version
-        env:
-          GITHUB_TOKEN: ${{ secrets.PAT }}
-          REPO: ${{ github.repository }}
-        run: |
-          python -c "
-          import requests, os, json
-          from datetime import datetime
-          
-          owner, repo = os.environ['REPO'].split('/')
-          token = os.environ['GITHUB_TOKEN']
-          api_url = f'https://api.github.com/user/packages/container/{repo}/versions'
-          headers = {
-              'Accept': 'application/vnd.github+json',
-              'Authorization': f'token {token}',
-              'X-GitHub-Api-Version': '2022-11-28'
-          }
-          
-          response = requests.get(api_url, headers=headers)
-          if response.status_code != 200:
-              print(f'Error: API request failed with status code {response.status_code}')
-              exit(1)
-          
-          versions = response.json()
-          if not versions:
-              print('No package versions found.')
-              exit(0)
-          
-          sorted_versions = sorted(versions, key=lambda x: x.get('created_at', ''), reverse=True)
-          latest_version = sorted_versions[0]
-          print(f'Keeping latest version: {latest_version.get('id', 'Unknown ID')}')
-          
-          for version in sorted_versions[1:]:
-              version_id = version.get('id')
-              if version_id:
-                  delete_url = f'{api_url}/{version_id}'
-                  delete_response = requests.delete(delete_url, headers=headers)
-                  print(f'Deleted version {version_id}: Status {delete_response.status_code}')
-          
-          print('Cleanup process completed.')
-          "
+    - name: Remove old artifacts
+      uses: c-hive/gha-remove-artifacts@v1
+      with:
+        age: '1 month' # '<number> <unit>', e.g. 5 days, 2 years, 90 seconds, parsed by Moment.js
+        # Optional inputs
+        # skip-tags: true
+        # skip-recent: 5
