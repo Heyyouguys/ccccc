@@ -67,6 +67,30 @@ async function generateAuthCookie(
   return encodeURIComponent(JSON.stringify(authData));
 }
 
+// 获取客户端IP地址
+function getClientIp(req: NextRequest): string {
+  // 尝试从各种可能的头部获取真实IP
+  const forwarded = req.headers.get('x-forwarded-for');
+  const realIp = req.headers.get('x-real-ip');
+  const cfConnectingIp = req.headers.get('cf-connecting-ip');
+  
+  if (cfConnectingIp) {
+    return cfConnectingIp;
+  }
+  
+  if (forwarded) {
+    // x-forwarded-for 可能包含多个IP，取第一个
+    return forwarded.split(',')[0].trim();
+  }
+  
+  if (realIp) {
+    return realIp;
+  }
+  
+  // 如果都获取不到，返回未知
+  return 'unknown';
+}
+
 export async function POST(req: NextRequest) {
   try {
     // localStorage 模式不支持注册
@@ -78,6 +102,9 @@ export async function POST(req: NextRequest) {
     }
 
     const { username, password, confirmPassword } = await req.json();
+    
+    // 获取注册IP
+    const registrationIp = getClientIp(req);
 
     // 先检查配置中是否允许注册（在验证输入之前）
     try {
@@ -126,14 +153,26 @@ export async function POST(req: NextRequest) {
     }
 
     try {
+      // 先获取配置
+      const config = await getConfig();
+      
+      // 检查该IP的注册次数
+      const ipRegistrationCount = config.UserConfig.Users.filter(
+        (u) => u.registrationIp === registrationIp
+      ).length;
+      
+      if (ipRegistrationCount >= 3) {
+        return NextResponse.json(
+          { error: '请不要频繁申请' },
+          { status: 429 }
+        );
+      }
+      
       // 检查用户是否已存在
       const userExists = await db.checkUserExist(username);
       if (userExists) {
         return NextResponse.json({ error: '该用户名已被注册' }, { status: 400 });
       }
-
-      // 先获取配置来检查是否需要审核（在注册用户之前，此时用户还不在数据库中）
-      const config = await getConfig();
       
       // 根据配置决定是否需要审核
       const requireApproval = config.UserConfig.RequireApproval !== false; // 默认需要审核
@@ -144,6 +183,7 @@ export async function POST(req: NextRequest) {
         role: 'user' as const,
         approved: !requireApproval, // 根据配置设置审核状态
         createdAt: Date.now(), // 设置注册时间戳
+        registrationIp: registrationIp, // 记录注册IP
         ...(requireApproval ? {} : { approvedAt: Date.now() }) // 如果不需要审核，设置审核通过时间
       };
 
