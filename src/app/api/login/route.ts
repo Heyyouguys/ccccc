@@ -1,10 +1,34 @@
 /* eslint-disable no-console,@typescript-eslint/no-explicit-any */
 import { NextRequest, NextResponse } from 'next/server';
 
-import { getConfig } from '@/lib/config';
+import { clearConfigCache, getConfig } from '@/lib/config';
 import { db } from '@/lib/db';
 
 export const runtime = 'nodejs';
+
+// 获取客户端IP地址
+function getClientIp(req: NextRequest): string {
+  // 尝试从各种可能的头部获取真实IP
+  const forwarded = req.headers.get('x-forwarded-for');
+  const realIp = req.headers.get('x-real-ip');
+  const cfConnectingIp = req.headers.get('cf-connecting-ip');
+  
+  if (cfConnectingIp) {
+    return cfConnectingIp;
+  }
+  
+  if (forwarded) {
+    // x-forwarded-for 可能包含多个IP，取第一个
+    return forwarded.split(',')[0].trim();
+  }
+  
+  if (realIp) {
+    return realIp;
+  }
+  
+  // 如果都获取不到，返回未知
+  return 'unknown';
+}
 
 // 读取存储类型环境变量，默认 localstorage
 const STORAGE_TYPE =
@@ -134,11 +158,29 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: '密码不能为空' }, { status: 400 });
     }
 
+    // 获取登录IP
+    const loginIp = getClientIp(req);
+    const loginTime = Date.now();
+    
     // 可能是站长，直接读环境变量
     if (
       username === process.env.USERNAME &&
       password === process.env.PASSWORD
     ) {
+      // 更新站长的登录信息
+      try {
+        const config = await getConfig();
+        const ownerIndex = config.UserConfig.Users.findIndex((u) => u.username === username);
+        if (ownerIndex !== -1) {
+          config.UserConfig.Users[ownerIndex].lastLoginIp = loginIp;
+          config.UserConfig.Users[ownerIndex].lastLoginTime = loginTime;
+          await db.saveAdminConfig(config);
+          clearConfigCache();
+        }
+      } catch (err) {
+        console.error('更新站长登录信息失败', err);
+      }
+      
       // 验证成功，设置认证cookie
       const response = NextResponse.json({ ok: true });
       const cookieValue = await generateAuthCookie(
@@ -183,6 +225,19 @@ export async function POST(req: NextRequest) {
           { error: '用户名或密码错误' },
           { status: 401 }
         );
+      }
+
+      // 更新用户的登录信息
+      try {
+        const userIndex = config.UserConfig.Users.findIndex((u) => u.username === username);
+        if (userIndex !== -1) {
+          config.UserConfig.Users[userIndex].lastLoginIp = loginIp;
+          config.UserConfig.Users[userIndex].lastLoginTime = loginTime;
+          await db.saveAdminConfig(config);
+          clearConfigCache();
+        }
+      } catch (err) {
+        console.error('更新用户登录信息失败', err);
       }
 
       // 验证成功，设置认证cookie

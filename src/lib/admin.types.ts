@@ -37,6 +37,8 @@ export interface AdminConfig {
       tags?: string[]; // 多 tags 取并集限制
       createdAt?: number; // 用户注册时间戳
       registrationIp?: string; // 注册时的IP地址
+      lastLoginIp?: string; // 上次登录IP地址
+      lastLoginTime?: number; // 上次登录时间戳
       tvboxToken?: string; // 用户专属的 TVBox Token
       tvboxEnabledSources?: string[]; // TVBox 可访问的源（为空则返回所有源）
       showAdultContent?: boolean; // 用户级别的成人内容显示控制
