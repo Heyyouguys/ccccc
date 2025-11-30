@@ -4,14 +4,14 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Docker tag
+        description: 'Docker 标签'
         required: false
-        default: latest
+        default: 'latest'
         type: string
   push:
-    branches: [main, master]
+    branches: [ main, master ]
   pull_request:
-    branches: [main, master]
+    branches: [ main, master ]
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -23,7 +23,6 @@ permissions:
   actions: write
 
 jobs:
-
   build:
     strategy:
       matrix:
@@ -33,6 +32,7 @@ jobs:
           - platform: linux/arm64
             os: ubuntu-24.04-arm
     runs-on: ${{ matrix.os }}
+
     steps:
       - name: Prepare platform name
         run: |
@@ -48,18 +48,24 @@ jobs:
         run: |
           CURRENT_VERSION=$(node -p "require('./package.json').version")
           echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
+          # Check if this is the first commit or if previous commit exists
           if git rev-parse HEAD~1 >/dev/null 2>&1; then
-            git checkout HEAD~1 -- package.json 2>/dev/null || echo '{"version":"0.0.0"}' > package.json.old
+            git checkout HEAD~1 -- package.json 2>/dev/null || echo "{\"version\":\"0.0.0\"}" > package.json.old
             PREVIOUS_VERSION=$(node -p "try { require('./package.json').version } catch(e) { '0.0.0' }")
             git checkout HEAD -- package.json
           else
             PREVIOUS_VERSION="0.0.0"
           fi
+
           echo "previous_version=$PREVIOUS_VERSION" >> $GITHUB_OUTPUT
+
           if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
             echo "version_changed=true" >> $GITHUB_OUTPUT
+            echo "Version changed: $PREVIOUS_VERSION -> $CURRENT_VERSION"
           else
             echo "version_changed=false" >> $GITHUB_OUTPUT
+            echo "Version unchanged: $CURRENT_VERSION"
           fi
 
       - name: Set up Docker Buildx
@@ -69,13 +75,12 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: Heyyouguys          # 替换为组织/用户名
-          password: ${{ secrets.PAT }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set lowercase repository owner
         id: lowercase
-        run: |
-          echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
       - name: Extract metadata
         id: meta
@@ -83,8 +88,8 @@ jobs:
         with:
           images: ghcr.io/${{ steps.lowercase.outputs.owner }}/lunatv
           tags: |
-            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master' }}
-            type=raw,value=${{ steps.version_check.outputs.current_version }},enable=${{ steps.version_check.outputs.version_changed }}
+            type=raw,value=latest,enable={{is_default_branch}}
+            type=raw,value=${{ steps.version_check.outputs.current_version }},enable=${{ steps.version_check.outputs.version_changed == 'true' }}
             type=raw,value=${{ github.event.inputs.tag }},enable=${{ github.event.inputs.tag != '' }}
 
       - name: Build and push by digest
@@ -103,7 +108,8 @@ jobs:
       - name: Export digest
         run: |
           mkdir -p /tmp/digests
-          echo "${{ steps.build.outputs.digest }}" | cut -d: -f2 > /tmp/digests/${{ env.PLATFORM_NAME }}
+          digest="${{ steps.build.outputs.digest }}"
+          touch "/tmp/digests/${digest#sha256:}"
 
       - name: Upload digest
         uses: actions/upload-artifact@v4
@@ -115,7 +121,8 @@ jobs:
 
   merge:
     runs-on: ubuntu-latest
-    needs: [build]
+    needs:
+      - build
     steps:
       - name: Checkout source code
         uses: actions/checkout@v4
@@ -127,18 +134,23 @@ jobs:
         run: |
           CURRENT_VERSION=$(node -p "require('./package.json').version")
           echo "current_version=$CURRENT_VERSION" >> $GITHUB_OUTPUT
+
           if git rev-parse HEAD~1 >/dev/null 2>&1; then
-            git checkout HEAD~1 -- package.json 2>/dev/null || echo '{"version":"0.0.0"}' > package.json.old
+            git checkout HEAD~1 -- package.json 2>/dev/null || echo "{\"version\":\"0.0.0\"}" > package.json.old
             PREVIOUS_VERSION=$(node -p "try { require('./package.json').version } catch(e) { '0.0.0' }")
             git checkout HEAD -- package.json
           else
             PREVIOUS_VERSION="0.0.0"
           fi
+
           echo "previous_version=$PREVIOUS_VERSION" >> $GITHUB_OUTPUT
+
           if [ "$CURRENT_VERSION" != "$PREVIOUS_VERSION" ]; then
             echo "version_changed=true" >> $GITHUB_OUTPUT
+            echo "Version changed: $PREVIOUS_VERSION -> $CURRENT_VERSION"
           else
             echo "version_changed=false" >> $GITHUB_OUTPUT
+            echo "Version unchanged: $CURRENT_VERSION"
           fi
 
       - name: Download digests
@@ -155,53 +167,51 @@ jobs:
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
-          username: USERNAME_OR_ORG
-          password: ${{ secrets.PAT }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set lowercase repository owner
         id: lowercase
-        run: |
-          echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+        run: echo "owner=$(echo '${{ github.repository_owner }}' | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
 
       - name: Create manifest list and push
         working-directory: /tmp/digests
         run: |
-          # always push the `latest` tag
+          # Always create latest tag
           docker buildx imagetools create -t ghcr.io/${{ steps.lowercase.outputs.owner }}/lunatv:latest \
             $(printf 'ghcr.io/${{ steps.lowercase.outputs.owner }}/lunatv@sha256:%s ' *)
 
-          # optional version tag (only when version changed)
+          # Create version tag if version changed
           if [ "${{ steps.version_check.outputs.version_changed }}" = "true" ]; then
             docker buildx imagetools create -t ghcr.io/${{ steps.lowercase.outputs.owner }}/lunatv:${{ steps.version_check.outputs.current_version }} \
               $(printf 'ghcr.io/${{ steps.lowercase.outputs.owner }}/lunatv@sha256:%s ' *)
           fi
 
-          # optional custom tag from workflow_dispatch
+          # Create custom tag if provided
           if [ -n "${{ github.event.inputs.tag }}" ] && [ "${{ github.event.inputs.tag }}" != "latest" ]; then
             docker buildx imagetools create -t ghcr.io/${{ steps.lowercase.outputs.owner }}/lunatv:${{ github.event.inputs.tag }} \
               $(printf 'ghcr.io/${{ steps.lowercase.outputs.owner }}/lunatv@sha256:%s ' *)
           fi
 
-  cleanup-refresh:
+  cleanup:
     runs-on: ubuntu-latest
-    needs: [merge]
+    needs:
+      - merge
     if: always()
     steps:
-      - name: Delete workflow runs
-        uses: Mattraks/delete-workflow-runs@main
+      - name: Delete old container images
+        uses: actions/delete-package-versions@v5
+        with:
+          package-name: 'lunatv'
+          package-type: 'container'
+          min-versions-to-keep: 5
+          delete-only-untagged-versions: 'false'
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Delete old workflow runs
+        uses: Mattraks/delete-workflow-runs@v2
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           repository: ${{ github.repository }}
           retain_days: 0
           keep_minimum_runs: 2
-  delete-old-versions:
-    runs-on: ubuntu-latest
-    needs: [cleanup-refresh]
-    if: always()
-    steps:
-      - name: Remove old versions of lunatv package, keep 5 newest
-        uses: WPMedia/delete-github-package-versions@v0.4.10
-        with:
-          keep: 5
-          names: |
-            lunatv
