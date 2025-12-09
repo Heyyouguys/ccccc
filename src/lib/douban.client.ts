@@ -9,7 +9,29 @@ const DOUBAN_CACHE_EXPIRE = {
   lists: 2 * 60 * 60,     // 列表2小时（更新频繁）
   categories: 2 * 60 * 60, // 分类2小时
   recommends: 2 * 60 * 60, // 推荐2小时
+  comments: 2 * 60 * 60,  // 短评2小时
 };
+
+// 豆瓣短评返回类型
+interface DoubanCommentsResult {
+  code: number;
+  message: string;
+  data?: {
+    comments: Array<{
+      username: string;
+      user_id: string;
+      avatar: string;
+      rating: number;
+      time: string;
+      location: string;
+      content: string;
+      useful_count: number;
+    }>;
+    start: number;
+    limit: number;
+    count: number;
+  };
+}
 
 // 缓存工具函数
 function getCacheKey(prefix: string, params: Record<string, any>): string {
@@ -892,6 +914,66 @@ export async function getDoubanActorMovies(
       code: 500,
       message: `搜索演员 ${actorName} 失败: ${(error as Error).message}`,
       list: []
+    };
+  }
+}
+
+
+/**
+ * 获取豆瓣影片短评
+ */
+interface DoubanCommentsParams {
+  id: string;
+  start?: number;
+  limit?: number;
+  sort?: 'new_score' | 'time';
+}
+
+export async function getDoubanComments(
+  params: DoubanCommentsParams
+): Promise<DoubanCommentsResult> {
+  const { id, start = 0, limit = 10, sort = 'new_score' } = params;
+
+  if (!id) {
+    return { code: 400, message: 'id 参数不能为空' };
+  }
+
+  if (limit < 1 || limit > 50) {
+    return { code: 400, message: 'limit 必须在 1-50 之间' };
+  }
+
+  if (start < 0) {
+    return { code: 400, message: 'start 不能小于 0' };
+  }
+
+  const cacheKey = getCacheKey('comments', { id, start, limit, sort });
+  const cached = await getCache(cacheKey);
+  if (cached && cached.data?.comments?.length > 0) {
+    console.log(`豆瓣短评缓存命中: ${id}/${start}`);
+    return cached;
+  }
+
+  try {
+    const response = await fetch(
+      `/api/douban/comments?id=${id}&start=${start}&limit=${limit}&sort=${sort}`
+    );
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! Status: ${response.status}`);
+    }
+
+    const result = await response.json();
+
+    if (result.code === 200) {
+      await setCache(cacheKey, result, DOUBAN_CACHE_EXPIRE.comments);
+      console.log(`豆瓣短评已缓存: ${id}/${start}`);
+    }
+
+    return result;
+  } catch (error) {
+    return {
+      code: 500,
+      message: `获取豆瓣短评失败: ${(error as Error).message}`
     };
   }
 }

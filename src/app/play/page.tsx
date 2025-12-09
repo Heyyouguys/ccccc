@@ -24,7 +24,7 @@ import {
   savePlayRecord,
   subscribeToDataUpdates,
 } from '@/lib/db.client';
-import { getDoubanDetails } from '@/lib/douban.client';
+import { getDoubanDetails, getDoubanComments } from '@/lib/douban.client';
 import { SearchResult } from '@/lib/types';
 import { getVideoResolutionFromM3u8, processImageUrl } from '@/lib/utils';
 
@@ -64,6 +64,12 @@ function PlayPageClient() {
   // 豆瓣详情状态
   const [movieDetails, setMovieDetails] = useState<any>(null);
   const [loadingMovieDetails, setLoadingMovieDetails] = useState(false);
+
+  // 豆瓣短评状态
+  const [movieComments, setMovieComments] = useState<any[]>([]);
+  const [loadingComments, setLoadingComments] = useState(false);
+  const [commentsError, setCommentsError] = useState<string | null>(null);
+  const [enableDoubanComments, setEnableDoubanComments] = useState(true);
 
   // 返回顶部按钮显示状态
   const [showBackToTop, setShowBackToTop] = useState(false);
@@ -232,6 +238,64 @@ function PlayPageClient() {
 
     loadMovieDetails();
   }, [videoDoubanId, loadingMovieDetails, movieDetails, loadingBangumiDetails, bangumiDetails]);
+
+  // 获取豆瓣短评配置
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const response = await fetch('/api/server-config');
+        const data = await response.json();
+        setEnableDoubanComments(data.EnableDoubanComments !== false);
+      } catch (error) {
+        console.error('Failed to fetch config:', error);
+      }
+    };
+    fetchConfig();
+  }, []);
+
+  // 加载豆瓣短评
+  useEffect(() => {
+    const loadComments = async () => {
+      if (!enableDoubanComments) return;
+      if (!videoDoubanId || videoDoubanId === 0 || detail?.source === 'shortdrama') {
+        return;
+      }
+
+      // 跳过bangumi ID
+      if (isBangumiId(videoDoubanId)) {
+        return;
+      }
+
+      // 如果已经加载过短评，不重复加载
+      if (loadingComments || movieComments.length > 0) {
+        return;
+      }
+
+      setLoadingComments(true);
+      setCommentsError(null);
+      try {
+        const response = await getDoubanComments({
+          id: videoDoubanId.toString(),
+          start: 0,
+          limit: 10,
+          sort: 'new_score'
+        });
+
+        if (response.code === 200 && response.data) {
+          setMovieComments(response.data.comments);
+        } else {
+          setCommentsError(response.message);
+        }
+      } catch (error) {
+        console.error('Failed to load comments:', error);
+        setCommentsError('加载短评失败');
+      } finally {
+        setLoadingComments(false);
+      }
+    };
+
+    loadComments();
+  }, [videoDoubanId, loadingComments, movieComments.length, detail?.source]);
 
   // 加载短剧详情（仅用于显示简介等信息，不影响源搜索）
   useEffect(() => {
@@ -4679,6 +4743,213 @@ function PlayPageClient() {
                 </div>
               )}
               
+              {/* 演员阵容 */}
+              {movieDetails?.celebrities && movieDetails.celebrities.length > 0 && (
+                <div className='mt-6 border-t border-gray-200 dark:border-gray-700 pt-6'>
+                  <h3 className='text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4 flex items-center gap-2'>
+                    <span>🎭</span>
+                    <span>演员阵容</span>
+                  </h3>
+                  <div className='flex gap-4 overflow-x-auto pb-4 scrollbar-hide'>
+                    {movieDetails.celebrities.slice(0, 15).map((celebrity: any) => (
+                      <a
+                        key={celebrity.id}
+                        href={`https://www.douban.com/personage/${celebrity.id}/`}
+                        target='_blank'
+                        rel='noopener noreferrer'
+                        className='flex-shrink-0 text-center group cursor-pointer'
+                      >
+                        <div className='w-20 h-20 rounded-full overflow-hidden bg-gray-200 dark:bg-gray-700 mb-2 ring-2 ring-transparent group-hover:ring-blue-500 transition-all duration-300 group-hover:scale-110 shadow-md group-hover:shadow-xl'>
+                          <img
+                            src={processImageUrl(celebrity.avatar)}
+                            alt={celebrity.name}
+                            className='w-full h-full object-cover'
+                            loading='lazy'
+                            onError={(e) => {
+                              e.currentTarget.style.display = 'none';
+                            }}
+                          />
+                        </div>
+                        <p className='text-xs font-medium text-gray-700 dark:text-gray-300 w-20 truncate group-hover:text-blue-500 transition-colors' title={celebrity.name}>
+                          {celebrity.name}
+                        </p>
+                        {celebrity.role && (
+                          <p className='text-[10px] text-gray-500 dark:text-gray-500 w-20 truncate mt-0.5' title={celebrity.role}>
+                            {celebrity.role}
+                          </p>
+                        )}
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 推荐影片 */}
+              {movieDetails?.recommendations && movieDetails.recommendations.length > 0 && (
+                <div className='mt-6 border-t border-gray-200 dark:border-gray-700 pt-6'>
+                  <h3 className='text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4 flex items-center gap-2'>
+                    <span>💡</span>
+                    <span>喜欢这部{movieDetails.episodes ? '剧' : '电影'}的人也喜欢</span>
+                  </h3>
+                  <div className='grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4'>
+                    {movieDetails.recommendations.map((item: any) => {
+                      const playUrl = `/play?title=${encodeURIComponent(item.title)}&douban_id=${item.id}&prefer=true`;
+                      return (
+                        <div
+                          key={item.id}
+                          ref={(node) => {
+                            if (node) {
+                              const oldClick = (node as any)._clickHandler;
+                              const oldTouchStart = (node as any)._touchStartHandler;
+                              const oldTouchEnd = (node as any)._touchEndHandler;
+                              if (oldClick) node.removeEventListener('click', oldClick, true);
+                              if (oldTouchStart) node.removeEventListener('touchstart', oldTouchStart, true);
+                              if (oldTouchEnd) node.removeEventListener('touchend', oldTouchEnd, true);
+
+                              let touchStartTime = 0;
+                              let isLongPress = false;
+                              let longPressTimer: ReturnType<typeof setTimeout> | null = null;
+
+                              const touchStartHandler = () => {
+                                touchStartTime = Date.now();
+                                isLongPress = false;
+                                longPressTimer = setTimeout(() => {
+                                  isLongPress = true;
+                                }, 500);
+                              };
+
+                              const touchEndHandler = (e: Event) => {
+                                if (longPressTimer) {
+                                  clearTimeout(longPressTimer);
+                                  longPressTimer = null;
+                                }
+                                const touchDuration = Date.now() - touchStartTime;
+                                if (isLongPress || touchDuration >= 500) return;
+                                e.preventDefault();
+                                e.stopPropagation();
+                                e.stopImmediatePropagation();
+                                window.location.href = playUrl;
+                              };
+
+                              const clickHandler = (e: Event) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                e.stopImmediatePropagation();
+                                window.location.href = playUrl;
+                              };
+
+                              node.addEventListener('touchstart', touchStartHandler, true);
+                              node.addEventListener('touchend', touchEndHandler, true);
+                              node.addEventListener('click', clickHandler, true);
+
+                              (node as any)._touchStartHandler = touchStartHandler;
+                              (node as any)._touchEndHandler = touchEndHandler;
+                              (node as any)._clickHandler = clickHandler;
+                            }
+                          }}
+                          style={{ WebkitTapHighlightColor: 'transparent', touchAction: 'manipulation' }}
+                        >
+                          <VideoCard
+                            id={item.id}
+                            title={item.title}
+                            poster={item.poster}
+                            rate={item.rate}
+                            douban_id={parseInt(item.id)}
+                            from='douban'
+                            isAggregate={true}
+                          />
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* 豆瓣短评 */}
+              {enableDoubanComments && movieComments && movieComments.length > 0 && (
+                <div className='mt-6 border-t border-gray-200 dark:border-gray-700 pt-6'>
+                  <h3 className='text-lg font-semibold text-gray-800 dark:text-gray-200 mb-4 flex items-center gap-2'>
+                    <span>💬</span>
+                    <span>豆瓣短评</span>
+                  </h3>
+                  <div className='space-y-4'>
+                    {movieComments.slice(0, 10).map((comment: any, index: number) => (
+                      <div
+                        key={index}
+                        className='bg-gray-50 dark:bg-gray-800/50 rounded-lg p-4 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors'
+                      >
+                        <div className='flex items-start gap-3'>
+                          <div className='flex-shrink-0'>
+                            {comment.avatar ? (
+                              <img
+                                src={comment.avatar}
+                                alt={comment.username}
+                                className='w-10 h-10 rounded-full object-cover'
+                                onError={(e) => {
+                                  e.currentTarget.style.display = 'none';
+                                }}
+                              />
+                            ) : (
+                              <div className='w-10 h-10 rounded-full bg-gray-300 dark:bg-gray-600 flex items-center justify-center text-gray-600 dark:text-gray-400'>
+                                {comment.username?.charAt(0)}
+                              </div>
+                            )}
+                          </div>
+                          <div className='flex-1 min-w-0'>
+                            <div className='flex items-center gap-2 mb-1 flex-wrap'>
+                              <span className='font-medium text-gray-800 dark:text-gray-200'>
+                                {comment.username}
+                              </span>
+                              {comment.rating > 0 && (
+                                <div className='flex items-center'>
+                                  {[...Array(5)].map((_, i) => (
+                                    <svg
+                                      key={i}
+                                      className={`w-3 h-3 ${i < comment.rating ? 'text-yellow-400' : 'text-gray-300 dark:text-gray-600'}`}
+                                      fill='currentColor'
+                                      viewBox='0 0 20 20'
+                                    >
+                                      <path d='M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z' />
+                                    </svg>
+                                  ))}
+                                </div>
+                              )}
+                              <span className='text-xs text-gray-500 dark:text-gray-400'>
+                                {comment.time}
+                                {comment.location && ` · ${comment.location}`}
+                              </span>
+                            </div>
+                            <p className='text-sm text-gray-700 dark:text-gray-300 leading-relaxed whitespace-pre-wrap'>
+                              {comment.content}
+                            </p>
+                            {comment.useful_count > 0 && (
+                              <div className='mt-2 text-xs text-gray-500 dark:text-gray-400'>
+                                {comment.useful_count} 人认为有用
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  {videoDoubanId && (
+                    <div className='mt-4 text-center'>
+                      <a
+                        href={`https://movie.douban.com/subject/${videoDoubanId}/comments?status=P`}
+                        target='_blank'
+                        rel='noopener noreferrer'
+                        className='inline-flex items-center gap-1 text-sm text-blue-600 dark:text-blue-400 hover:underline'
+                      >
+                        查看更多短评
+                        <svg className='w-4 h-4' fill='none' stroke='currentColor' viewBox='0 0 24 24'>
+                          <path strokeLinecap='round' strokeLinejoin='round' strokeWidth={2} d='M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14' />
+                        </svg>
+                      </a>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* 网盘资源区域 */}
               <div id="netdisk-section" className='mt-6'>
                 <div className='border-t border-gray-200 dark:border-gray-700 pt-6'>

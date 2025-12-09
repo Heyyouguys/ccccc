@@ -280,6 +280,7 @@ interface SiteConfig {
   DisableYellowFilter: boolean;
   ShowAdultContent: boolean;
   FluidSearch: boolean;
+  EnableDoubanComments: boolean;
   // TMDB配置
   TMDBApiKey?: string;
   TMDBLanguage?: string;
@@ -4491,6 +4492,7 @@ const SiteConfigComponent = ({ config, refreshConfig }: { config: AdminConfig | 
     DisableYellowFilter: false,
     ShowAdultContent: false,
     FluidSearch: true,
+    EnableDoubanComments: true,
     // TMDB配置默认值
     TMDBApiKey: '',
     TMDBLanguage: 'zh-CN',
@@ -4557,7 +4559,8 @@ const SiteConfigComponent = ({ config, refreshConfig }: { config: AdminConfig | 
         DoubanImageProxy: config.SiteConfig.DoubanImageProxy || '',
         DisableYellowFilter: config.SiteConfig.DisableYellowFilter || false,
         ShowAdultContent: config.SiteConfig.ShowAdultContent || false,
-        FluidSearch: config.SiteConfig.FluidSearch || true,
+        FluidSearch: config.SiteConfig.FluidSearch !== false,
+        EnableDoubanComments: config.SiteConfig.EnableDoubanComments !== false,
         // TMDB配置
         TMDBApiKey: config.SiteConfig.TMDBApiKey || '',
         TMDBLanguage: config.SiteConfig.TMDBLanguage || 'zh-CN',
@@ -5048,6 +5051,41 @@ const SiteConfigComponent = ({ config, refreshConfig }: { config: AdminConfig | 
         </div>
         <p className='mt-1 text-xs text-gray-500 dark:text-gray-400'>
           启用后搜索结果将实时流式返回，提升用户体验。
+        </p>
+      </div>
+
+      {/* 豆瓣短评开关 */}
+      <div className='mb-4'>
+        <div className='flex items-center justify-between'>
+          <label
+            htmlFor='enableDoubanComments'
+            className='text-sm font-medium text-gray-700 dark:text-gray-300'
+          >
+            启用豆瓣短评
+          </label>
+          <button
+            type='button'
+            onClick={() =>
+              setSiteSettings((prev) => ({
+                ...prev,
+                EnableDoubanComments: !prev.EnableDoubanComments,
+              }))
+            }
+            className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2 ${siteSettings.EnableDoubanComments
+              ? buttonStyles.toggleOn
+              : buttonStyles.toggleOff
+              }`}
+          >
+            <span
+              className={`inline-block h-4 w-4 transform rounded-full ${buttonStyles.toggleThumb} transition-transform ${siteSettings.EnableDoubanComments
+                ? buttonStyles.toggleThumbOn
+                : buttonStyles.toggleThumbOff
+                }`}
+            />
+          </button>
+        </div>
+        <p className='mt-1 text-xs text-gray-500 dark:text-gray-400'>
+          启用后在播放页面显示豆瓣短评内容。
         </p>
       </div>
 
