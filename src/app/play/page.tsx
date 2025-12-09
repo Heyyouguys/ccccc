@@ -10,6 +10,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import EpisodeSelector from '@/components/EpisodeSelector';
 import NetDiskSearchResults from '@/components/NetDiskSearchResults';
 import PageLayout from '@/components/PageLayout';
+import VideoCard from '@/components/VideoCard';
 import SkipController, { SkipSettingsButton } from '@/components/SkipController';
 import artplayerPluginChromecast from '@/lib/artplayer-plugin-chromecast';
 import { ClientCache } from '@/lib/client-cache';
