@@ -70,7 +70,7 @@ function PlayPageClient() {
   const [movieComments, setMovieComments] = useState<any[]>([]);
   const [loadingComments, setLoadingComments] = useState(false);
   const [commentsError, setCommentsError] = useState<string | null>(null);
-  const [enableDoubanComments, setEnableDoubanComments] = useState(true);
+  const [enableDoubanComments, setEnableDoubanComments] = useState(false);
 
   // 返回顶部按钮显示状态
   const [showBackToTop, setShowBackToTop] = useState(false);
