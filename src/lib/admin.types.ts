@@ -17,6 +17,7 @@ export interface AdminConfig {
     DisableYellowFilter: boolean;
     ShowAdultContent: boolean; // 是否显示成人内容，默认 false
     FluidSearch: boolean;
+    EnableDoubanComments?: boolean; // 是否启用豆瓣短评，默认 true
     // TMDB配置
     TMDBApiKey?: string;
     TMDBLanguage?: string;

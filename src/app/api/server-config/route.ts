@@ -17,6 +17,7 @@ export async function GET(request: NextRequest) {
     SiteName: config.SiteConfig.SiteName,
     StorageType: process.env.NEXT_PUBLIC_STORAGE_TYPE || 'localstorage',
     Version: CURRENT_VERSION,
+    EnableDoubanComments: config.SiteConfig.EnableDoubanComments !== false,
   };
 
   // 添加 Telegram 登录配置（仅公开必要信息）
