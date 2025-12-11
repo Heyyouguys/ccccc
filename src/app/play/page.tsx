@@ -3260,19 +3260,19 @@ function PlayPageClient() {
               display: none !important;
             }
 
-            /* 移动端：交换全屏和投放按钮顺序 */
+            /* 移动端：投放按钮显示在全屏按钮之后 */
             @media (max-width: 768px) {
               .art-controls-right {
                 display: flex !important;
               }
               .art-control-fullscreen {
-                order: 10 !important;
+                order: 5 !important;
               }
               .art-control-airplay {
-                order: 5 !important;
+                order: 10 !important;
               }
               .art-control-chromecast {
-                order: 5 !important;
+                order: 10 !important;
               }
             }
 
