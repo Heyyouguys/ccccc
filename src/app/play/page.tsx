@@ -3244,7 +3244,7 @@ function PlayPageClient() {
           artPlayerRef.current.on('video:play', handleFirstPlay);
         }
 
-        // 添加弹幕插件按钮选择性隐藏CSS
+        // 添加弹幕插件按钮选择性隐藏CSS + 移动端按钮顺序调整
         const optimizeDanmukuControlsCSS = () => {
           if (document.getElementById('danmuku-controls-optimize')) return;
 
@@ -3258,6 +3258,22 @@ function PlayPageClient() {
 
             .artplayer-plugin-danmuku .apd-emitter {
               display: none !important;
+            }
+
+            /* 移动端：交换全屏和投放按钮顺序 */
+            @media (max-width: 768px) {
+              .art-controls-right {
+                display: flex !important;
+              }
+              .art-control-fullscreen {
+                order: 10 !important;
+              }
+              .art-control-airplay {
+                order: 5 !important;
+              }
+              .art-control-chromecast {
+                order: 5 !important;
+              }
             }
 
             
