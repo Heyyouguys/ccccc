@@ -394,7 +394,6 @@ function HomeClient() {
         // 处理即将上映数据
         if (upcomingReleasesData.status === 'fulfilled' && upcomingReleasesData.value?.items) {
           const releases = upcomingReleasesData.value.items;
-          console.log('📅 获取到的即将上映数据:', releases.length, '条');
 
           // 过滤出即将上映和刚上映的作品（过去7天到未来90天）
           const today = new Date();
@@ -404,10 +403,6 @@ function HomeClient() {
           const ninetyDaysLater = new Date(today);
           ninetyDaysLater.setDate(ninetyDaysLater.getDate() + 90);
 
-          console.log('📅 7天前日期:', sevenDaysAgo.toISOString().split('T')[0]);
-          console.log('📅 今天日期:', today.toISOString().split('T')[0]);
-          console.log('📅 90天后日期:', ninetyDaysLater.toISOString().split('T')[0]);
-
           const upcoming = releases.filter((item: ReleaseCalendarItem) => {
             // 修复时区问题：使用字符串比较而不是Date对象比较
             const releaseDateStr = item.releaseDate; // 格式: "2025-11-07"
@@ -416,9 +411,6 @@ function HomeClient() {
             const isUpcoming = releaseDateStr >= sevenDaysAgoStr && releaseDateStr <= ninetyDaysStr;
             return isUpcoming;
           });
-
-          console.log('📅 日期过滤后的数据:', upcoming.length, '条');
-          console.log('📅 过滤后的标题:', upcoming.map((i: ReleaseCalendarItem) => `${i.title} (${i.releaseDate})`));
 
           // 智能去重：识别同系列内容（如"XX"和"XX第二季"）以及副标题（如"过关斩将：猎杀游戏"和"猎杀游戏"）
           const normalizeTitle = (title: string): string => {
@@ -491,8 +483,6 @@ function HomeClient() {
             acc.push(current);
             return acc;
           }, []);
-
-          console.log('📅 去重后的即将上映数据:', uniqueUpcoming.length, '条');
 
           // 智能分配：按更细的时间段分类，确保时间分散
           const todayStr = today.toISOString().split('T')[0];
@@ -568,15 +558,6 @@ function HomeClient() {
               }
             }
           }
-
-          console.log('📅 分配结果:', {
-            已上映: recentlyReleased.length,
-            今日上映: releasingToday.length,
-            '7天内': nextSevenDays.length,
-            '8-30天': nextThirtyDays.length,
-            '30天后': laterReleasing.length,
-            最终显示: selectedItems.length
-          });
 
           setUpcomingReleases(selectedItems);
         } else {
@@ -898,10 +879,6 @@ function HomeClient() {
               <ContinueWatching />
 
               {/* 即将上映 */}
-              {(() => {
-                console.log('🔍 即将上映 section 渲染检查:', { loading, upcomingReleasesCount: upcomingReleases.length });
-                return null;
-              })()}
               {!loading && upcomingReleases.length > 0 && (
                 <section className='mb-8'>
                   <div className='mb-4 flex items-center justify-between'>
