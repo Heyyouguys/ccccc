@@ -1,9 +1,12 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { API_CONFIG, ApiSite, getConfig } from '@/lib/config';
+import { createLogger } from '@/lib/logger';
 import { getCachedSearchPage, setCachedSearchPage } from '@/lib/search-cache';
 import { SearchResult } from '@/lib/types';
 import { cleanHtmlTags } from '@/lib/utils';
+
+const log = createLogger('Search');
 
 interface ApiSearchItem {
   vod_id: string;
@@ -149,9 +152,7 @@ export async function searchFromApi(
     let pageCountFromFirst = 0;
 
     // 调试：输出搜索变体
-    if (searchVariants.length > 1) {
-      console.log(`[DEBUG] 搜索变体 for "${query}":`, searchVariants);
-    }
+    log.debugIf(searchVariants.length > 1, `搜索变体 for "${query}":`, searchVariants);
 
     // 尝试所有搜索变体，收集所有结果，然后选择最相关的
     const allVariantResults: Array<{variant: string, results: SearchResult[], relevanceScore: number}> = [];
@@ -160,7 +161,7 @@ export async function searchFromApi(
       const apiUrl =
         apiBaseUrl + API_CONFIG.search.path + encodeURIComponent(variant);
 
-      console.log(`[DEBUG] 尝试搜索变体: "${variant}" on ${apiSite.name}`);
+      log.debug(`尝试搜索变体: "${variant}" on ${apiSite.name}`);
 
       try {
         // 使用新的缓存搜索函数处理第一页
@@ -169,7 +170,7 @@ export async function searchFromApi(
         if (firstPageResult.results.length > 0) {
           // 计算相关性分数
           const relevanceScore = calculateRelevanceScore(query, variant, firstPageResult.results);
-          console.log(`[DEBUG] 变体 "${variant}" 找到 ${firstPageResult.results.length} 个结果, 相关性分数: ${relevanceScore}`);
+          log.debug(`变体 "${variant}" 找到 ${firstPageResult.results.length} 个结果, 相关性分数: ${relevanceScore}`);
 
           allVariantResults.push({
             variant,
@@ -177,10 +178,10 @@ export async function searchFromApi(
             relevanceScore
           });
         } else {
-          console.log(`[DEBUG] 变体 "${variant}" 无结果`);
+          log.debug(`变体 "${variant}" 无结果`);
         }
       } catch (error) {
-        console.log(`[DEBUG] 变体 "${variant}" 搜索失败:`, error);
+        log.debug(`变体 "${variant}" 搜索失败:`, error);
       }
     }
 
@@ -194,7 +195,7 @@ export async function searchFromApi(
       current.relevanceScore > best.relevanceScore ? current : best
     );
 
-    console.log(`[DEBUG] 选择最佳变体: "${bestResult.variant}", 分数: ${bestResult.relevanceScore}`);
+    log.debug(`选择最佳变体: "${bestResult.variant}", 分数: ${bestResult.relevanceScore}`);
 
     results = bestResult.results;
     query = bestResult.variant; // 用于后续分页
