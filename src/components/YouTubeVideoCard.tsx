@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef } from 'react';
+import { useState } from 'react';
 import Image from 'next/image';
 
 interface YouTubeVideo {
@@ -25,62 +25,17 @@ interface YouTubeVideoCardProps {
   video: YouTubeVideo;
 }
 
-interface StreamInfo {
-  quality: string;
-  url: string;
-  type: string;
-}
-
 const YouTubeVideoCard = ({ video }: YouTubeVideoCardProps) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [imageError, setImageError] = useState(false);
-  const [isLoading, setIsLoading] = useState(false);
-  const [streamUrl, setStreamUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const videoRef = useRef<HTMLVideoElement>(null);
 
-  const handleEmbedPlay = async () => {
-    setIsLoading(true);
-    setError(null);
-    
-    try {
-      // 获取视频流信息
-      const response = await fetch(`/api/proxy/youtube?v=${video.id.videoId}&type=info`);
-      if (!response.ok) {
-        throw new Error('无法获取视频信息');
-      }
-      
-      const data = await response.json();
-      
-      // 优先使用合并流（包含视频和音频）
-      if (data.combinedStream?.url) {
-        setStreamUrl(data.combinedStream.url);
-        setIsPlaying(true);
-      } else if (data.videoStreams?.length > 0) {
-        // 选择第一个可用的视频流
-        setStreamUrl(data.videoStreams[0].url);
-        setIsPlaying(true);
-      } else {
-        throw new Error('没有可用的视频流');
-      }
-    } catch (err: any) {
-      console.error('获取视频流失败:', err);
-      setError(err.message || '播放失败');
-    } finally {
-      setIsLoading(false);
-    }
+  const handleEmbedPlay = () => {
+    setIsPlaying(true);
   };
 
   const handleOpenInNewTab = () => {
     window.open(`https://www.youtube.com/watch?v=${video.id.videoId}`, '_blank');
   };
-
-  // 当streamUrl变化时自动播放
-  useEffect(() => {
-    if (streamUrl && videoRef.current) {
-      videoRef.current.play().catch(console.error);
-    }
-  }, [streamUrl]);
 
   const formatDate = (dateString: string) => {
     const date = new Date(dateString);
@@ -99,24 +54,19 @@ const YouTubeVideoCard = ({ video }: YouTubeVideoCardProps) => {
     <div className="bg-white dark:bg-gray-800 rounded-lg shadow-md hover:shadow-lg transition-shadow duration-300 overflow-hidden">
       {/* 视频缩略图区域 */}
       <div className="relative aspect-video bg-gray-200 dark:bg-gray-700">
-        {isPlaying && streamUrl ? (
+        {isPlaying ? (
           <div className="w-full h-full">
-            <video
-              ref={videoRef}
-              src={streamUrl}
+            <iframe
+              src={`https://www.youtube-nocookie.com/embed/${video.id.videoId}?autoplay=1&rel=0`}
               className="w-full h-full"
-              controls
-              autoPlay
-              playsInline
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+              allowFullScreen
               title={video.snippet.title}
             />
             {/* 关闭播放按钮 */}
             <button
-              onClick={() => {
-                setIsPlaying(false);
-                setStreamUrl(null);
-              }}
-              className="absolute top-2 right-2 bg-black bg-opacity-75 text-white p-2 rounded-full hover:bg-opacity-90 transition-opacity z-10"
+              onClick={() => setIsPlaying(false)}
+              className="absolute top-2 right-2 bg-black bg-opacity-75 text-white p-2 rounded-full hover:bg-opacity-90 transition-opacity"
               aria-label="关闭播放"
             >
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -142,47 +92,18 @@ const YouTubeVideoCard = ({ video }: YouTubeVideoCardProps) => {
               </div>
             )}
             
-            {/* 加载中或错误提示 */}
-            {isLoading && (
-              <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-                <div className="text-white text-center">
-                  <div className="w-8 h-8 border-2 border-white border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
-                  <span className="text-sm">加载中...</span>
-                </div>
-              </div>
-            )}
-            
-            {error && (
-              <div className="absolute inset-0 bg-black bg-opacity-50 flex items-center justify-center">
-                <div className="text-white text-center p-4">
-                  <svg className="w-8 h-8 mx-auto mb-2 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <span className="text-sm">{error}</span>
-                  <button
-                    onClick={() => setError(null)}
-                    className="block mx-auto mt-2 text-xs text-blue-300 hover:text-blue-200"
-                  >
-                    关闭
-                  </button>
-                </div>
-              </div>
-            )}
-            
             {/* 播放按钮覆盖层 */}
-            {!isLoading && !error && (
-              <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-30 transition-all duration-300 flex items-center justify-center group">
-                <button
-                  onClick={handleEmbedPlay}
-                  className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-red-600 hover:bg-red-700 text-white rounded-full p-4 transform hover:scale-110 transition-transform"
-                  aria-label="播放视频"
-                >
-                  <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
-                    <path d="M8 5v14l11-7z"/>
-                  </svg>
-                </button>
-              </div>
-            )}
+            <div className="absolute inset-0 bg-black bg-opacity-0 hover:bg-opacity-30 transition-all duration-300 flex items-center justify-center group">
+              <button
+                onClick={handleEmbedPlay}
+                className="opacity-0 group-hover:opacity-100 transition-opacity duration-300 bg-red-600 hover:bg-red-700 text-white rounded-full p-4 transform hover:scale-110 transition-transform"
+                aria-label="播放视频"
+              >
+                <svg className="w-6 h-6" fill="currentColor" viewBox="0 0 24 24">
+                  <path d="M8 5v14l11-7z"/>
+                </svg>
+              </button>
+            </div>
             
             {/* YouTube标识 */}
             <div className="absolute bottom-2 right-2 bg-red-600 text-white text-xs px-2 py-1 rounded flex items-center">
@@ -210,22 +131,12 @@ const YouTubeVideoCard = ({ video }: YouTubeVideoCardProps) => {
         <div className="flex space-x-2">
           <button
             onClick={handleEmbedPlay}
-            disabled={isLoading}
-            className="flex-1 bg-red-600 hover:bg-red-700 disabled:bg-gray-400 text-white text-xs py-2 px-3 rounded transition-colors flex items-center justify-center"
+            className="flex-1 bg-red-600 hover:bg-red-700 text-white text-xs py-2 px-3 rounded transition-colors flex items-center justify-center"
           >
-            {isLoading ? (
-              <>
-                <div className="w-3 h-3 mr-1 border border-white border-t-transparent rounded-full animate-spin"></div>
-                加载中
-              </>
-            ) : (
-              <>
-                <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 24 24">
-                  <path d="M8 5v14l11-7z"/>
-                </svg>
-                代理播放
-              </>
-            )}
+            <svg className="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 24 24">
+              <path d="M8 5v14l11-7z"/>
+            </svg>
+            嵌入播放
           </button>
           <button
             onClick={handleOpenInNewTab}

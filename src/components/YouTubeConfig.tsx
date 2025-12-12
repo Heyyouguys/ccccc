@@ -254,11 +254,11 @@ const YouTubeConfig = ({ config, refreshConfig }: YouTubeConfigProps) => {
                       <p className='text-red-700 dark:text-red-300 text-xs'>• 中国大陆IP无法直接访问YouTube API</p>
                       <p className='text-red-700 dark:text-red-300 text-xs'>• 需要使用海外服务器或代理服务</p>
                     </div>
-                    <div className='mt-2 p-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded'>
-                      <p className='text-orange-700 dark:text-orange-300 text-xs'>📊 <span className='font-medium'>流量说明：</span></p>
-                      <p className='text-orange-700 dark:text-orange-300 text-xs'>• YouTube视频播放<strong>会消耗</strong>您的服务器流量</p>
-                      <p className='text-orange-700 dark:text-orange-300 text-xs'>• 视频内容通过服务器代理传输到用户</p>
-                      <p className='text-orange-700 dark:text-orange-300 text-xs'>• 请注意服务器带宽和流量消耗</p>
+                    <div className='mt-2 p-2 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded'>
+                      <p className='text-blue-700 dark:text-blue-300 text-xs'>📊 <span className='font-medium'>流量说明：</span></p>
+                      <p className='text-blue-700 dark:text-blue-300 text-xs'>• YouTube视频播放<strong>不消耗</strong>您的服务器流量</p>
+                      <p className='text-blue-700 dark:text-blue-300 text-xs'>• 视频内容直接从YouTube服务器传输到用户</p>
+                      <p className='text-blue-700 dark:text-blue-300 text-xs'>• 您的服务器只提供网页显示，流量消耗很小</p>
                     </div>
                   </div>
                 </div>
