@@ -11,6 +11,7 @@ import {
   getCache,
   setCache,
 } from './shortdrama-cache';
+import { logError } from './error-monitor';
 
 const SHORTDRAMA_API_BASE = 'https://api.r2afosne.dpdns.org';
 
@@ -34,12 +35,10 @@ export async function getShortDramaCategories(): Promise<ShortDramaCategory[]> {
   const cacheKey = getCacheKey('categories', {});
 
   try {
-    // 临时禁用缓存进行测试 - 移动端强制刷新
-    if (!isMobile()) {
-      const cached = await getCache(cacheKey);
-      if (cached) {
-        return cached;
-      }
+    // 检查缓存
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      return cached;
     }
 
     const apiUrl = isMobile()
@@ -80,7 +79,10 @@ export async function getShortDramaCategories(): Promise<ShortDramaCategory[]> {
     await setCache(cacheKey, result, SHORTDRAMA_CACHE_EXPIRE.categories);
     return result;
   } catch (error) {
-    console.error('获取短剧分类失败:', error);
+    logError(
+      error instanceof Error ? error : new Error(String(error)),
+      { context: 'getShortDramaCategories' }
+    );
     return [];
   }
 }
@@ -93,12 +95,10 @@ export async function getRecommendedShortDramas(
   const cacheKey = getCacheKey('recommends', { category, size });
 
   try {
-    // 临时禁用缓存进行测试 - 移动端强制刷新
-    if (!isMobile()) {
-      const cached = await getCache(cacheKey);
-      if (cached) {
-        return cached;
-      }
+    // 检查缓存
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      return cached;
     }
 
     const apiUrl = isMobile()
@@ -147,7 +147,10 @@ export async function getRecommendedShortDramas(
     await setCache(cacheKey, result, SHORTDRAMA_CACHE_EXPIRE.recommends);
     return result;
   } catch (error) {
-    console.error('获取推荐短剧失败:', error);
+    logError(
+      error instanceof Error ? error : new Error(String(error)),
+      { context: 'getRecommendedShortDramas', metadata: { category, size } }
+    );
     return [];
   }
 }
@@ -161,12 +164,10 @@ export async function getShortDramaList(
   const cacheKey = getCacheKey('lists', { category, page, size });
 
   try {
-    // 临时禁用缓存进行测试 - 移动端强制刷新
-    if (!isMobile()) {
-      const cached = await getCache(cacheKey);
-      if (cached) {
-        return cached;
-      }
+    // 检查缓存
+    const cached = await getCache(cacheKey);
+    if (cached) {
+      return cached;
     }
 
     const apiUrl = isMobile()
@@ -221,7 +222,10 @@ export async function getShortDramaList(
     await setCache(cacheKey, result, cacheTime);
     return result;
   } catch (error) {
-    console.error('获取短剧列表失败:', error);
+    logError(
+      error instanceof Error ? error : new Error(String(error)),
+      { context: 'getShortDramaList', metadata: { category, page, size } }
+    );
     return { list: [], hasMore: false };
   }
 }
@@ -282,7 +286,10 @@ export async function searchShortDramas(
 
     return result;
   } catch (error) {
-    console.error('搜索短剧失败:', error);
+    logError(
+      error instanceof Error ? error : new Error(String(error)),
+      { context: 'searchShortDramas', metadata: { query, page, size } }
+    );
     return { list: [], hasMore: false };
   }
 }
@@ -451,8 +458,10 @@ async function parseWithAlternativeApi(
       }
     };
   } catch (error) {
-    console.error('备用API解析失败:', error);
-    // 返回更详细的错误信息
+    logError(
+      error instanceof Error ? error : new Error(String(error)),
+      { context: 'parseWithAlternativeApi', metadata: { dramaName, episode } }
+    );
     const errorMsg = error instanceof Error ? error.message : '备用API请求失败';
     return {
       code: -1,
@@ -559,7 +568,10 @@ export async function parseShortDramaEpisode(
       },
     };
   } catch (error) {
-    console.error('解析短剧集数失败:', error);
+    logError(
+      error instanceof Error ? error : new Error(String(error)),
+      { context: 'parseShortDramaEpisode', metadata: { id, episode, dramaName } }
+    );
     // 如果主API网络请求失败且提供了剧名和备用API地址，尝试使用备用API
     if (dramaName && alternativeApiUrl) {
       console.log('主API网络错误，尝试使用备用API...');
@@ -616,7 +628,10 @@ export async function parseShortDramaBatch(
     const data = await response.json();
     return data.results || [];
   } catch (error) {
-    console.error('批量解析短剧失败:', error);
+    logError(
+      error instanceof Error ? error : new Error(String(error)),
+      { context: 'parseShortDramaBatch', metadata: { id, episodes } }
+    );
     return [];
   }
 }
@@ -663,7 +678,10 @@ export async function parseShortDramaAll(
     const data = await response.json();
     return data.results || [];
   } catch (error) {
-    console.error('解析完整短剧失败:', error);
+    logError(
+      error instanceof Error ? error : new Error(String(error)),
+      { context: 'parseShortDramaAll', metadata: { id } }
+    );
     return [];
   }
 }
