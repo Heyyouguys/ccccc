@@ -4,7 +4,6 @@ import { NextRequest, NextResponse } from 'next/server';
 
 import { getCacheTime, getConfig } from '@/lib/config';
 import { parseShortDramaEpisode } from '@/lib/shortdrama.client';
-import { logError } from '@/lib/error-monitor';
 
 // 标记为动态路由
 export const dynamic = 'force-dynamic';
@@ -40,10 +39,8 @@ export async function GET(request: NextRequest) {
       const shortDramaConfig = config.ShortDramaConfig;
       alternativeApiUrl = shortDramaConfig?.enableAlternative ? shortDramaConfig.alternativeApiUrl : undefined;
     } catch (configError) {
-      logError(
-        configError instanceof Error ? configError : new Error(String(configError)),
-        { context: 'shortdrama-parse-getConfig', metadata: { id: videoId, episode: episodeNum } }
-      );
+      console.error('读取短剧配置失败:', configError);
+      // 配置读取失败时，不使用备用API
       alternativeApiUrl = undefined;
     }
 
@@ -87,17 +84,7 @@ export async function GET(request: NextRequest) {
 
     return finalResponse;
   } catch (error) {
-    logError(
-      error instanceof Error ? error : new Error(String(error)),
-      {
-        context: 'shortdrama-parse-route',
-        metadata: {
-          id: request.nextUrl.searchParams.get('id'),
-          episode: request.nextUrl.searchParams.get('episode'),
-          name: request.nextUrl.searchParams.get('name')
-        }
-      }
-    );
+    console.error('短剧解析失败:', error);
     return NextResponse.json(
       { error: '服务器内部错误' },
       { status: 500 }
